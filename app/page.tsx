@@ -1,34 +1,669 @@
 'use client';
-import {useEffect,useState} from 'react';
-import {BookOpen,Home,NotebookPen,FolderOpen,MessageCircle,ChevronRight,ArrowUpRight,Plus,Check,Clock,Paperclip,Send,X,Search,Leaf,Sparkles,ArrowLeft,Download,GraduationCap} from 'lucide-react';
-type Entry={id:string;kind:string;[key:string]:any};
-const assignments:Entry[]=[{id:'a1',kind:'assignment',title:'A place that feels like home',type:'Descriptive essay',due:'2026-11-04',minutes:25,words:150,description:'Every place has a story. Tell us about a place that makes you feel happy, safe, or completely yourself.',instructions:'Write 150–200 words about your special place. Start with an opening that makes your reader curious. Describe what you can see, hear and feel. Finish by explaining why this place matters to you.',color:'peach',icon:'🏡'},{id:'a2',kind:'assignment',title:'Should every school have a garden?',type:'Opinion essay',due:'2026-11-06',minutes:30,words:180,description:'Your opinion matters. Let’s give it some good reasons.',instructions:'Write 180–250 words. State your opinion in the introduction, give two reasons with examples, and finish with a conclusion. Try using “I believe”, “For example” and “In conclusion”.',color:'mint',icon:'🌱'},{id:'a3',kind:'assignment',title:'The day everything went backwards',type:'Creative writing',due:'2026-11-10',minutes:20,words:120,description:'A little imagination can take your story a long way.',instructions:'Write a story of 120–180 words. Include a beginning, a surprising problem and an ending. What happened when everything went backwards?',color:'lavender',icon:'🚀'}];
-const materials:Entry[]=[{id:'r1',kind:'material',title:'The essay-building toolkit',type:'Writing guide',color:'mint',icon:'🧩',body:'Think of your essay as a little house.\n\n1. INTRODUCTION — Open the door. Introduce your topic and let your reader know what to expect.\n\n2. BODY — Explore the rooms. Each paragraph should have one main idea, an explanation and a specific example.\n\n3. CONCLUSION — Say goodbye. Bring your ideas together and leave your reader with one final thought.\n\nTry it: write one sentence for each part before you start your first draft.'},{id:'r2',kind:'material',title:'Words that connect your ideas',type:'Word bank',color:'peach',icon:'🔗',body:'ADD AN IDEA\nAlso • In addition • Another reason\n\nGIVE AN EXAMPLE\nFor example • For instance • Such as\n\nSHOW A DIFFERENCE\nHowever • On the other hand • Although\n\nSHOW A REASON\nBecause • Therefore • As a result\n\nFINISH YOUR ESSAY\nIn conclusion • To sum up\n\nChallenge: choose three connecting phrases and use them in your next essay.'},{id:'r3',kind:'material',title:'Ready to hand it in?',type:'Revision checklist',color:'lavender',icon:'🔍',body:'Read your writing out loud, then check:\n\n□ Does my opening introduce the topic?\n□ Does each paragraph have one main idea?\n□ Have I included specific examples?\n□ Does my ending bring the ideas together?\n□ Do my sentences start with capital letters?\n□ Have I checked spelling and punctuation?\n\nA good writer revises. Small changes make a big difference!'}];
-export default function App(){
-const [page,setPage]=useState('Home'),[role,setRole]=useState('Student'),[rows,setRows]=useState<Entry[]>([]),[active,setActive]=useState<Entry|null>(null),[resource,setResource]=useState<Entry|null>(null),[modal,setModal]=useState(''),[toast,setToast]=useState(''),[busy,setBusy]=useState(false),[loaded,setLoaded]=useState(false),[error,setError]=useState(''),[filter,setFilter]=useState('All homework'),[query,setQuery]=useState(''),[draft,setDraft]=useState(''),[files,setFiles]=useState<any[]>([]),[feedback,setFeedback]=useState(''),[message,setMessage]=useState(''),[dirty,setDirty]=useState(false);
-useEffect(()=>{fetch('/api/data').then(async r=>{if(!r.ok)throw Error((await r.json() as any).error);return r.json() as Promise<Entry[]>}).then(d=>{setRows(d.map((x:Entry)=>({...x,id:x.localId||x.id})));setLoaded(true)}).catch(e=>setError(e.message))},[]);
-useEffect(()=>{if(!dirty)return;const fn=(e:BeforeUnloadEvent)=>{e.preventDefault();e.returnValue=''};window.addEventListener('beforeunload',fn);return()=>window.removeEventListener('beforeunload',fn)},[dirty]);
-useEffect(()=>{if(toast){const t=setTimeout(()=>setToast(''),4500);return()=>clearTimeout(t)}},[toast]);
-useEffect(()=>{if(!modal)return;const previous=document.activeElement as HTMLElement;const dialog=document.querySelector('[role=dialog]');const nodes=()=>Array.from(dialog?.querySelectorAll<HTMLElement>('button:not(:disabled),a[href],input:not(:disabled),textarea:not(:disabled),select')||[]);nodes()[0]?.focus();const close=(e:KeyboardEvent)=>{if(e.key==='Escape')setModal('');if(e.key==='Tab'){const items=nodes(),first=items[0],last=items[items.length-1];if(e.shiftKey&&document.activeElement===first){e.preventDefault();last?.focus()}else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first?.focus()}}};document.addEventListener('keydown',close);return()=>{document.removeEventListener('keydown',close);previous?.focus()}},[modal]);
-const all=[...assignments,...rows.filter(x=>x.kind==='assignment')], resources=[...materials,...rows.filter(x=>x.kind==='material')];
-const sub=(id:string)=>rows.find(x=>x.kind==='submission'&&x.assignment===id);
-const status=(a:Entry)=>sub(a.id)?.status||'To do';
-async function save(entry:Entry){const r=await fetch('/api/data',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(entry)});if(!r.ok)throw Error((await r.json() as any).error||'Could not save. Please try again.');setRows(old=>[...old.filter(x=>x.id!==entry.id),entry]);}
-async function action(fn:()=>Promise<void>){setBusy(true);try{await fn()}catch(e:any){setToast(e.message||'Something went wrong. Try again.')}finally{setBusy(false)}}
-function open(a:Entry){setActive(a);const s=sub(a.id);setDraft(s?.text||'');setFiles(s?.files||[]);setFeedback(s?.feedback||'');setDirty(false);setPage('Editor')}
-function nav(p:string){if(dirty&&!confirm('Leave this draft without saving your latest changes?'))return;setDirty(false);setPage(p);setActive(null)}
-async function upload(list:FileList|null){if(!list)return;await action(async()=>{const added:any[]=[];for(const f of Array.from(list)){if(f.size>10485760)throw Error('Files must be smaller than 10 MB.');const fd=new FormData();fd.append('file',f);const r=await fetch('/api/files',{method:'POST',body:fd});if(!r.ok)throw Error(await r.text());added.push(await r.json())}setFiles(prev=>[...prev,...added]);setDirty(true);setToast('Files uploaded. Save or hand in to attach them to your homework.')})}
-async function submit(st:string){if(!active)return;if(st==='Handed in'&&!draft.trim()&&!files.length){setToast('Write something or attach a file first.');return}await action(async()=>{await save({id:'s-'+active.id,kind:'submission',assignment:active.id,text:draft,files,status:st,feedback:sub(active.id)?.feedback||'',updated:new Date().toISOString()});setDirty(false);setToast(st==='Handed in'?'You did it! Your homework is handed in.':'Your draft is safely saved.')})}
-const completed=all.filter(a=>['Handed in','Reviewed'].includes(status(a))).length;
-function card(a:Entry){return <button className="assignment" key={a.id} onClick={()=>open(a)}><div className={'card-art '+a.color}><span>{a.icon||'✏️'}</span><span className="art-dots">✧<br/>＋</span><span className="type">{a.type}</span></div><div className="card-body"><span className={'badge '+(status(a)==='To do'?'amber':'green')}>{status(a)==='To do'?<Clock size={12}/>:<Check size={12}/>} {status(a)}</span><h3>{a.title}</h3><p>{a.description}</p><div className="card-foot"><span>{new Date(a.due+'T12:00:00').toLocaleDateString('en-GB',{month:'short',day:'numeric'})} <i>·</i> {a.minutes||25} min</span><span className="arrow"><ArrowUpRight size={18}/></span></div></div></button>}
-return <div className="shell"><aside className="sidebar"><a className="brand" onClick={()=>nav('Home')}><span className="brand-icon"><NotebookPen size={25}/></span><span>little steps<span className="brand-sub">WRITING CLUB</span></span></a><div className="class-label">YOUR LEARNING SPACE</div><nav>{[['Home',Home],['Homework',NotebookPen],['Materials',FolderOpen],['Messages',MessageCircle]].map(([name,Icon]:any)=><button key={name} className={page===name?'selected':''} onClick={()=>nav(name)}><Icon size={20}/>{name}{name==='Homework'&&<span className="nav-count">{all.length-completed}</span>}</button>)}</nav><div className="side-note"><span>✦</span><h4>Little steps.<br/>Big ideas.</h4><p>Every great writer started with a first draft.</p><div className="scribble">keep going ↗</div></div><div className="side-bottom"><div className="avatar">{role==='Student'?'S':'T'}</div><div><strong>{role==='Student'?'Student preview':'Teacher workspace'}</strong><small>Essay explorers · Ages 10–11</small></div></div></aside><div className="main"><header><div className="breadcrumb">My classroom <ChevronRight size={14}/> <strong>{page==='Editor'?'Homework':page}</strong></div><div className="header-right"><span className="private-dot">Private preview</span><select aria-label="Preview role" value={role} onChange={e=>setRole(e.target.value)}><option>Student</option><option>Teacher</option></select><div className="avatar small">{role==='Student'?'S':'T'}</div></div></header><main>
-{error&&<div className="notice">{error} <a href="/signin-with-chatgpt?return_to=/" target="_top">Sign in to your private workspace →</a></div>}
-{!loaded&&!error&&<div className="notice">Loading your saved classroom…</div>}
-{page==='Home'&&<><div className="page-heading"><div className="eyebrow">A LITTLE PRACTICE, A LOT OF POSSIBILITY</div><h1>{role==='Student'?'Hello, young writer!':'Welcome, teacher!'} <span className="wave">✦</span></h1><p>{role==='Student'?'Your ideas belong here. Let’s turn them into something wonderful.':'A little guidance can help a big idea grow.'}</p></div><section className="hero"><div className="hero-copy"><span className="pill"><Sparkles size={14}/> YOUR NEXT LITTLE STEP</span><h2>Big stories start<br/>with your ideas.</h2><p>Find your words, make a first draft, and let your imagination do the rest.</p><button className="primary" onClick={()=>open(all.find(a=>status(a)==='To do')||all[0])}>Let’s get writing <ArrowUpRight size={17}/></button><small>No perfect words needed. Just a beginning.</small></div><div className="hero-illustration" aria-hidden="true"><div className="orb"></div><span className="star s1">✦</span><span className="star s2">✧</span><span className="star s3">✦</span><div className="paper back"></div><div className="paper"><span className="paper-title">My big idea</span><div className="line short"></div><div className="line"></div><div className="line"></div><div className="line mid"></div><div className="paper-picture">🌱</div><span className="paper-heart">♡</span></div><div className="pencil"></div><div className="sticker">one word<br/>at a time ♡</div></div></section><div className="dashboard-grid"><div><div className="section-title"><h2>Your writing adventures <span>{all.length}</span></h2><button className="text-button" onClick={()=>nav('Homework')}>All homework <ChevronRight size={16}/></button></div><div className="cards">{all.slice(0,2).map(card)}</div></div><aside className="right-col"><div className="progress-box"><div className="section-title"><h3>Look at you grow!</h3><Leaf size={21}/></div><p>One little step at a time.</p><div className="progress-row"><strong>{completed}<span> / {all.length}</span></strong><span>adventures handed in</span></div><div className="progress-track"><div style={{width:(completed/all.length*100)+'%'}}/></div><small>{completed?'Keep it up. Your ideas are growing!':'Your next adventure is waiting for you.'}</small></div><div className="teacher-note"><span className="eyebrow">A NOTE FOR OUR WRITERS</span><h3>Your voice matters. 💬</h3><p>“Don’t worry about getting it perfect the first time. A first draft is just you telling yourself the story.”</p><span className="note-author"><span className="avatar tiny">✎</span> Your writing club</span></div></aside></div><div className="section-title"><h2>A little help along the way</h2><button className="text-button" onClick={()=>nav('Materials')}>Explore materials <ChevronRight size={16}/></button></div><div className="resource-row">{resources.slice(0,3).map(r=><button className="resource" key={r.id} onClick={()=>{setResource(r);setModal('resource')}}><span className={'resource-icon '+r.color}>{r.icon||'📖'}</span><span><small>{r.type}</small><strong>{r.title}</strong></span><ChevronRight size={17}/></button>)}</div></>}
-{page==='Homework'&&<><div className="page-heading heading-row"><div><div className="eyebrow">ONE IDEA AT A TIME</div><h1>{role==='Teacher'?'Class homework':'Your writing adventures'}</h1><p>Start a draft, add a photo, or pick up where you left off.</p></div>{role==='Teacher'&&<button className="primary" onClick={()=>setModal('assignment')}><Plus size={18}/> Assign homework</button>}</div><div className="toolbar"><div className="tabs">{['All homework','To do','Draft','Handed in','Reviewed'].map(f=><button className={filter===f?'active':''} onClick={()=>setFilter(f)} key={f}>{f}</button>)}</div></div><div className="cards three">{all.filter(a=>filter==='All homework'||status(a)===filter).map(card)}</div>{!all.some(a=>filter==='All homework'||status(a)===filter)&&<div className="empty">Nothing here yet. Your writing journey is just getting started.</div>}</>}
-{page==='Materials'&&<><div className="page-heading heading-row"><div><div className="eyebrow">YOUR WRITER’S TOOLBOX</div><h1>A little help along the way</h1><p>Helpful guides and words to make your ideas shine.</p></div>{role==='Teacher'&&<button className="primary" onClick={()=>setModal('material')}><Plus size={18}/> Add material</button>}</div><label className="search"><Search size={18}/><input placeholder="Find a guide or a word bank…" value={query} onChange={e=>setQuery(e.target.value)}/></label><div className="material-grid">{resources.filter(r=>(r.title+' '+r.type).toLowerCase().includes(query.toLowerCase())).map(r=><button className="material-card" key={r.id} onClick={()=>{setResource(r);setModal('resource')}}><div className={'material-art '+r.color}>{r.icon||'📖'}</div><small>{r.type}</small><h3>{r.title}</h3><span className="text-button">Open resource <ArrowUpRight size={17}/></span></button>)}</div>{!resources.some(r=>(r.title+' '+r.type).toLowerCase().includes(query.toLowerCase()))&&<p className="empty">No resources found. Try another word.</p>}</>}
-{page==='Messages'&&<><div className="page-heading"><div className="eyebrow">LET’S TALK ABOUT YOUR IDEAS</div><h1>A helping hand</h1><p>Questions, encouragement, and little moments of “I get it!”</p></div><div className="message-board"><div className="message-header"><span className="avatar">✎</span><div><strong>Your writing conversation</strong><small>Private workspace · Try both sides using the view selector</small></div></div><div className="messages">{!rows.some(x=>x.kind==='message')&&<div className="empty"><MessageCircle size={32}/><h3>Every good question starts a conversation.</h3><p>Write a question or a note below.</p></div>}{rows.filter(x=>x.kind==='message').sort((a,b)=>a.time.localeCompare(b.time)).map(m=><div className={'bubble '+(m.sender===role?'mine':'')} key={m.id}><small>{m.sender} · {new Date(m.time).toLocaleDateString('en-GB',{month:'short',day:'numeric'})}</small><p>{m.text}</p></div>)}</div><form className="message-form" onSubmit={e=>{e.preventDefault();if(message.trim())action(async()=>{await save({id:crypto.randomUUID(),kind:'message',text:message.trim(),sender:role,time:new Date().toISOString()});setMessage('');setToast('Message saved in your private preview.')})}}><input aria-label="Your message" maxLength={3000} value={message} onChange={e=>setMessage(e.target.value)} placeholder="Write your question or a kind word…"/><button className="primary" disabled={busy||!loaded||!message.trim()}><Send size={18}/> Send</button></form></div></>}
-{page==='Editor'&&active&&<><button className="text-button back-link" onClick={()=>nav('Homework')}><ArrowLeft size={16}/> Back to homework</button><div className="page-heading"><span className="eyebrow">{active.type}</span><h1>{active.title}</h1><p>Due {new Date(active.due+'T12:00:00').toLocaleDateString('en-GB',{month:'long',day:'numeric'})} · About {active.minutes||25} minutes</p></div><div className="editor-grid"><div><div className="instructions"><h3>Your mission</h3><p>{active.instructions}</p></div><div className="writing-box"><div className="writing-top"><h3>{role==='Teacher'?'Student writing':'Your first draft starts here'}</h3><span>{draft.trim()?draft.trim().split(/\s+/).length:0} words</span></div><textarea aria-label="Essay draft" placeholder="I want to tell you about…" value={draft} readOnly={role==='Teacher'} onChange={e=>{setDraft(e.target.value);setDirty(true)}} maxLength={50000}/><div className="writing-bottom"><span>{dirty?'You have unsaved changes':sub(active.id)?'Saved to your workspace':'Ready when you are'}</span>{role==='Student'&&<button disabled={busy||!loaded} onClick={()=>submit('Draft')}>Save draft</button>}</div></div><div className="upload-box"><Paperclip size={22}/><div><h3>Prefer to write on paper?</h3><p>Add a photo, PDF, Word document or text file. Up to 10 MB each.</p></div><label className="upload-button">{busy?'Uploading…':'Add files'}<input type="file" multiple disabled={busy||!loaded||role==='Teacher'} accept=".png,.jpg,.jpeg,.webp,.heic,.pdf,.doc,.docx,.txt" onChange={e=>{upload(e.target.files);e.target.value=''}}/></label></div>{files.map((f,i)=><div className="file-row" key={f.key}><Paperclip size={16}/><a href={'/api/files?key='+encodeURIComponent(f.key)}>{f.name}</a>{role==='Student'&&<button aria-label={'Remove '+f.name} onClick={()=>{setFiles(files.filter((_,n)=>n!==i));setDirty(true)}}><X size={16}/></button>}</div>)}{role==='Student'&&<div className="submit-row"><span>You can save a draft and come back later.</span><button className="primary" disabled={busy||!loaded} onClick={()=>submit('Handed in')}>Hand in homework <Send size={17}/></button></div>}</div><aside><div className="tip-box"><span>✦ WRITER’S LITTLE HELPER</span><h3>Stuck on your first sentence?</h3><p>Close your eyes and picture your idea. What is the first thing you notice?</p><hr/><strong>Try these little steps</strong><p>1. Gather three ideas.<br/>2. Choose your favourite.<br/>3. Write as if you’re telling a friend.</p><button className="text-button" onClick={()=>{setResource(materials[0]);setModal('resource')}}>Open the writing guide <ChevronRight size={16}/></button></div><div className="feedback-box"><h3>Teacher feedback</h3>{role==='Teacher'?<><textarea aria-label="Teacher feedback" value={feedback} onChange={e=>setFeedback(e.target.value)} placeholder="One thing that shines, and one thing to try next…"/><button className="primary" disabled={busy||!sub(active.id)||!feedback.trim()} onClick={()=>action(async()=>{await save({...sub(active.id)!,feedback,status:'Reviewed'});setToast('Feedback saved.')})}>Return feedback <Check size={16}/></button>{!sub(active.id)&&<small>Save student work before reviewing it.</small>}</>:<p>{sub(active.id)?.feedback||'Your feedback will appear here after your teacher reviews your work.'}</p>}</div></aside></div></>}
-<footer>Made for curious minds and growing writers. <span>Little steps, every day. ✦</span></footer></main></div>
-{modal&&<div className="modal-overlay" onClick={()=>setModal('')}><section role="dialog" aria-modal="true" aria-label={modal==='resource'?resource?.title:'Create '+modal} className="modal" onClick={e=>e.stopPropagation()}><button className="close" aria-label="Close dialog" onClick={()=>setModal('')}><X/></button>{modal==='resource'?<><span className="eyebrow">{resource?.type}</span><h2>{resource?.title}</h2><div className="resource-content">{resource?.body}</div>{resource?.file&&<a className="primary" href={'/api/files?key='+encodeURIComponent(resource.file.key)}><Download size={17}/> Download {resource.file.name}</a>}</>:<><span className="eyebrow">TEACHER WORKSPACE</span><h2>{modal==='assignment'?'A new writing adventure':'Add to the toolbox'}</h2><form onSubmit={e=>{e.preventDefault();const form=e.currentTarget;const fd=new FormData(form);action(async()=>{const entry:any={id:crypto.randomUUID(),kind:modal,title:fd.get('title'),type:fd.get('type'),color:'mint',icon:modal==='assignment'?'✏️':'📖'};if(modal==='assignment')Object.assign(entry,{due:fd.get('due'),description:fd.get('description'),instructions:fd.get('instructions'),minutes:25});else {entry.body=fd.get('body');const file=fd.get('file');if(file instanceof File&&file.size){const data=new FormData();data.append('file',file);const r=await fetch('/api/files',{method:'POST',body:data});if(!r.ok)throw Error(await r.text());entry.file=await r.json()}}await save(entry);setModal('');setToast(modal==='assignment'?'Homework assigned in your preview.':'Material added.')})}}><label>Title<input name="title" required maxLength={100} placeholder={modal==='assignment'?'What will your writers explore?':'Give this resource a name'}/></label><label>{modal==='assignment'?'Writing type':'Resource type'}<input name="type" required maxLength={40} placeholder={modal==='assignment'?'Opinion essay':'Writing guide'}/></label>{modal==='assignment'?<><label>Due date<input name="due" type="date" required/></label><label>Short introduction<input name="description" maxLength={180} required/></label><label>Instructions<textarea name="instructions" required maxLength={6000} placeholder="Give your writers a clear task and a suggested word count."/></label></>:<><label>Resource content<textarea name="body" required maxLength={15000} placeholder="Add your guide, examples, or helpful notes…"/></label><label>Optional attachment<input type="file" name="file" accept=".png,.jpg,.jpeg,.webp,.heic,.pdf,.doc,.docx,.txt"/></label></>}<button className="primary" disabled={busy||!loaded}>{busy?'Saving…':modal==='assignment'?'Assign homework':'Save material'} <Plus size={17}/></button></form></>}</section></div>}{toast&&<div role="status" className="toast">{toast}<button onClick={()=>setToast('')} aria-label="Dismiss"><X size={16}/></button></div>}</div>
+
+import React, { useEffect, useState, useMemo, useCallback } from 'react';
+import type {
+  Entry,
+  AssignmentEntry,
+  MaterialEntry,
+  SubmissionEntry,
+  MessageEntry,
+  Role,
+  HomeworkStatus,
+  FileAttachment,
+  Student,
+  InteractiveActivity,
+} from '../lib/types';
+import {
+  isAssignment,
+  isMaterial,
+  isSubmission,
+  isMessage,
+  STUDENTS,
+} from '../lib/types';
+import type { ClassroomUser } from '../lib/auth-types';
+import { INITIAL_ASSIGNMENTS, INITIAL_MATERIALS } from '../lib/initial-data';
+import { Sidebar } from '../components/classroom/Sidebar';
+import { Header } from '../components/classroom/Header';
+import { HomeView } from '../components/classroom/HomeView';
+import { HomeworkView } from '../components/classroom/HomeworkView';
+import { MaterialsView } from '../components/classroom/MaterialsView';
+import { MessagesView } from '../components/classroom/MessagesView';
+import { EditorView } from '../components/classroom/EditorView';
+import { ResourceModal, CreateModal } from '../components/classroom/Modals';
+import { Toast } from '../components/classroom/Toast';
+import { LoginView } from '../components/classroom/LoginView';
+
+export default function App() {
+  const [currentUser, setCurrentUser] = useState<ClassroomUser | null>(null);
+  const [checkingAuth, setCheckingAuth] = useState<boolean>(true);
+  const [page, setPage] = useState<string>('Home');
+  const [role, setRole] = useState<Role>('Student');
+  const [selectedStudent, setSelectedStudent] = useState<Student>(STUDENTS[0]); // Default to Hajun
+  const [reviewingStudent, setReviewingStudent] = useState<Student>(STUDENTS[0]); // Default to Hajun
+  const [rows, setRows] = useState<Entry[]>([]);
+  const [active, setActive] = useState<AssignmentEntry | null>(null);
+  const [resource, setResource] = useState<MaterialEntry | null>(null);
+  const [modal, setModal] = useState<string>('');
+  const [toast, setToast] = useState<string>('');
+  const [busy, setBusy] = useState<boolean>(false);
+  const [loaded, setLoaded] = useState<boolean>(false);
+  const [error, setError] = useState<string>('');
+  const [filter, setFilter] = useState<string>('All homework');
+  const [query, setQuery] = useState<string>('');
+  const [draft, setDraft] = useState<string>('');
+  const [files, setFiles] = useState<FileAttachment[]>([]);
+  const [feedback, setFeedback] = useState<string>('');
+  const [message, setMessage] = useState<string>('');
+  const [dirty, setDirty] = useState<boolean>(false);
+
+  const applyUserSession = useCallback((user: ClassroomUser) => {
+    setCurrentUser(user);
+    setRole(user.role);
+    if (user.role === 'Student' && user.studentId) {
+      const student = STUDENTS.find((s) => s.id === user.studentId);
+      if (student) setSelectedStudent(student);
+    }
+  }, []);
+
+  // Check existing session on load
+  useEffect(() => {
+    fetch('/api/auth/me')
+      .then(async (res) => {
+        if (res.ok) {
+          const data = (await res.json()) as { authenticated: boolean; user?: ClassroomUser };
+          if (data.authenticated && data.user) {
+            applyUserSession(data.user);
+          }
+        }
+      })
+      .finally(() => setCheckingAuth(false));
+  }, [applyUserSession]);
+
+  // Fetch initial records from storage
+  useEffect(() => {
+    if (!currentUser) return;
+
+    fetch('/api/data')
+      .then(async (response) => {
+        if (!response.ok) {
+          const errData = (await response.json()) as { error?: string };
+          throw new Error(errData.error || 'Failed to load classroom data');
+        }
+        return response.json() as Promise<Entry[]>;
+      })
+      .then((data) => {
+        setRows(
+          data.map((item) => ({
+            ...item,
+            id: item.localId || item.id,
+          }))
+        );
+        setLoaded(true);
+      })
+      .catch((err: Error) => {
+        setError(err.message);
+        setLoaded(true);
+      });
+  }, [currentUser]);
+
+  // Prevent accidental navigation when unsaved changes exist
+  useEffect(() => {
+    if (!dirty) return;
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = '';
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [dirty]);
+
+  // Toast auto-dismissal
+  useEffect(() => {
+    if (!toast) return;
+    const timer = setTimeout(() => setToast(''), 4500);
+    return () => clearTimeout(timer);
+  }, [toast]);
+
+  // Derived datasets
+  const allAssignments = useMemo<AssignmentEntry[]>(() => {
+    const custom = rows.filter(isAssignment);
+    return [...INITIAL_ASSIGNMENTS, ...custom];
+  }, [rows]);
+
+  const allMaterials = useMemo<MaterialEntry[]>(() => {
+    const custom = rows.filter(isMaterial);
+    return [...INITIAL_MATERIALS, ...custom];
+  }, [rows]);
+
+  const allMessages = useMemo<MessageEntry[]>(() => {
+    return rows.filter(isMessage);
+  }, [rows]);
+
+  // Retrieve submission for a specific assignment and student
+  const getSubmission = useCallback(
+    (assignmentId: string, studentId: string): SubmissionEntry | undefined => {
+      return rows.find(
+        (entry): entry is SubmissionEntry =>
+          isSubmission(entry) &&
+          entry.assignment === assignmentId &&
+          (entry.studentId === studentId || (!entry.studentId && studentId === 'hajun'))
+      );
+    },
+    [rows]
+  );
+
+  // Retrieve all student submissions for an assignment
+  const getStudentSubmissions = useCallback(
+    (assignment: AssignmentEntry): Record<string, HomeworkStatus> => {
+      const result: Record<string, HomeworkStatus> = {};
+      for (const st of STUDENTS) {
+        const sub = getSubmission(assignment.id, st.id);
+        result[st.id] = sub?.status || 'To do';
+      }
+      return result;
+    },
+    [getSubmission]
+  );
+
+  // Status for the active student in student mode
+  const getHomeworkStatus = useCallback(
+    (assignment: AssignmentEntry): HomeworkStatus => {
+      return getSubmission(assignment.id, selectedStudent.id)?.status || 'To do';
+    },
+    [getSubmission, selectedStudent.id]
+  );
+
+  const completedCount = useMemo(() => {
+    return allAssignments.filter((a) =>
+      ['Handed in', 'Reviewed'].includes(getHomeworkStatus(a))
+    ).length;
+  }, [allAssignments, getHomeworkStatus]);
+
+  async function action(fn: () => Promise<void>) {
+    setBusy(true);
+    try {
+      await fn();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Something went wrong. Try again.';
+      setToast(msg);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function saveEntry(entry: Entry) {
+    const res = await fetch('/api/data', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-user-role': role,
+      },
+      body: JSON.stringify(entry),
+    });
+
+    if (!res.ok) {
+      const errorJson = (await res.json()) as { error?: string };
+      throw new Error(errorJson.error || 'Could not save. Please try again.');
+    }
+
+    setRows((prev) => [...prev.filter((x) => x.id !== entry.id), entry]);
+  }
+
+  function openAssignment(assignment: AssignmentEntry) {
+    setActive(assignment);
+    const targetStudent = role === 'Teacher' ? reviewingStudent : selectedStudent;
+    const existingSubmission = getSubmission(assignment.id, targetStudent.id);
+    setDraft(existingSubmission?.text || '');
+    setFiles(existingSubmission?.files || []);
+    setFeedback(existingSubmission?.feedback || '');
+    setDirty(false);
+    setPage('Editor');
+  }
+
+  // Teacher switches which student they are reviewing in Editor
+  function handleReviewingStudentChange(student: Student) {
+    if (!active) return;
+    setReviewingStudent(student);
+    const existingSubmission = getSubmission(active.id, student.id);
+    setDraft(existingSubmission?.text || '');
+    setFiles(existingSubmission?.files || []);
+    setFeedback(existingSubmission?.feedback || '');
+    setDirty(false);
+  }
+
+  // Student switches who they are writing as
+  function handleStudentChange(student: Student) {
+    setSelectedStudent(student);
+    if (active) {
+      const existingSubmission = getSubmission(active.id, student.id);
+      setDraft(existingSubmission?.text || '');
+      setFiles(existingSubmission?.files || []);
+      setFeedback(existingSubmission?.feedback || '');
+      setDirty(false);
+    }
+  }
+
+  function navigateTo(targetPage: string) {
+    if (dirty && !confirm('Leave this draft without saving your latest changes?')) {
+      return;
+    }
+    setDirty(false);
+    setPage(targetPage);
+    setActive(null);
+  }
+
+  async function handleLogout() {
+    await fetch('/api/auth/logout', { method: 'POST' });
+    setCurrentUser(null);
+    setPage('Home');
+    setToast('Signed out successfully.');
+  }
+
+  async function uploadFiles(list: FileList | null) {
+    if (!list) return;
+
+    await action(async () => {
+      const added: FileAttachment[] = [];
+
+      for (const file of Array.from(list)) {
+        if (file.size > 10 * 1024 * 1024) {
+          throw new Error('Files must be smaller than 10 MB.');
+        }
+
+        const formData = new FormData();
+        formData.append('file', file);
+
+        const response = await fetch('/api/files', {
+          method: 'POST',
+          body: formData,
+        });
+
+        if (!response.ok) {
+          const errText = await response.text();
+          throw new Error(errText || 'File upload failed');
+        }
+
+        const fileMeta = (await response.json()) as FileAttachment;
+        added.push(fileMeta);
+      }
+
+      setFiles((prev) => [...prev, ...added]);
+      setDirty(true);
+      setToast('Files uploaded. Save or hand in to attach them to your homework.');
+    });
+  }
+
+  async function submitHomework(status: HomeworkStatus) {
+    if (!active) return;
+
+    if (status === 'Handed in' && !draft.trim() && !files.length) {
+      setToast('Write something or attach a file first.');
+      return;
+    }
+
+    await action(async () => {
+      const existingSubmission = getSubmission(active.id, selectedStudent.id);
+      const submissionRecord: SubmissionEntry = {
+        id: `s-${active.id}-${selectedStudent.id}`,
+        kind: 'submission',
+        assignment: active.id,
+        studentId: selectedStudent.id,
+        studentName: selectedStudent.name,
+        text: draft,
+        files,
+        status,
+        feedback: existingSubmission?.feedback || '',
+        activityScore: existingSubmission?.activityScore,
+        updated: new Date().toISOString(),
+      };
+
+      await saveEntry(submissionRecord);
+      setDirty(false);
+      setToast(
+        status === 'Handed in'
+          ? `You did it, ${selectedStudent.name}! Your homework is handed in.`
+          : `Draft saved for ${selectedStudent.name}.`
+      );
+    });
+  }
+
+  // Student completes a warm-up edutainment activity in Editor
+  const handleActivityComplete = (score: number, total: number) => {
+    if (!active) return;
+    action(async () => {
+      const existingSubmission = getSubmission(active.id, selectedStudent.id);
+      const submissionRecord: SubmissionEntry = {
+        id: `s-${active.id}-${selectedStudent.id}`,
+        kind: 'submission',
+        assignment: active.id,
+        studentId: selectedStudent.id,
+        studentName: selectedStudent.name,
+        text: draft,
+        files,
+        status: existingSubmission?.status || 'Draft',
+        feedback: existingSubmission?.feedback || '',
+        activityScore: {
+          score,
+          total,
+          completedAt: new Date().toISOString(),
+        },
+        updated: new Date().toISOString(),
+      };
+
+      await saveEntry(submissionRecord);
+      setToast(`Edutainment warm-up complete! Scored ${score}/${total} ⭐`);
+    });
+  };
+
+  const handleSendMessage = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!message.trim()) return;
+
+    action(async () => {
+      const senderName = role === 'Student' ? selectedStudent.name : 'Teacher';
+      const newMsg: MessageEntry = {
+        id: crypto.randomUUID(),
+        kind: 'message',
+        text: message.trim(),
+        sender: senderName,
+        studentId: role === 'Student' ? selectedStudent.id : undefined,
+        time: new Date().toISOString(),
+      };
+
+      await saveEntry(newMsg);
+      setMessage('');
+      setToast(`Message sent as ${senderName}.`);
+    });
+  };
+
+  const handleCreateModalSubmit = (fd: FormData) => {
+    action(async () => {
+      const title = String(fd.get('title') || '');
+      const type = String(fd.get('type') || '');
+      const activityType = String(fd.get('activityType') || 'none');
+
+      let interactive: InteractiveActivity | undefined;
+      if (activityType === 'word_scramble') {
+        const word = String(fd.get('scramble_word1') || 'GLIMMER').trim().toUpperCase();
+        const hint = String(fd.get('scramble_hint1') || 'A soft gentle shine');
+        const scrambled = word.split('').sort(() => Math.random() - 0.5).join('');
+        interactive = {
+          type: 'word_scramble',
+          title: `${title} Word Scramble`,
+          words: [{ scrambled, word, hint }],
+        };
+      } else if (activityType === 'quiz') {
+        const question = String(fd.get('quiz_question') || 'What makes a strong first draft?');
+        const opt1 = String(fd.get('quiz_opt1') || 'Sharing honest ideas and feelings');
+        const opt2 = String(fd.get('quiz_opt2') || 'Making it 100% perfect on the first try');
+        const explanation = String(fd.get('quiz_explanation') || 'Drafts are for exploring your imagination!');
+        interactive = {
+          type: 'quiz',
+          title: `${title} Comprehension Quiz`,
+          questions: [
+            {
+              question,
+              options: [opt1, opt2],
+              correctIndex: 0,
+              explanation,
+            },
+          ],
+        };
+      } else if (activityType === 'connecting_words') {
+        interactive = {
+          type: 'connecting_words',
+          title: 'Connecting Words Challenge',
+          pairs: [
+            { phrase: 'For example', category: 'Give an example' },
+            { phrase: 'However', category: 'Show a difference' },
+            { phrase: 'In addition', category: 'Add an idea' },
+          ],
+        };
+      }
+
+      if (modal === 'assignment') {
+        const newAssignment: AssignmentEntry = {
+          id: crypto.randomUUID(),
+          kind: 'assignment',
+          title,
+          type,
+          color: 'mint',
+          icon: '✏️',
+          due: String(fd.get('due') || ''),
+          description: String(fd.get('description') || ''),
+          instructions: String(fd.get('instructions') || ''),
+          minutes: 25,
+          interactive,
+        };
+        await saveEntry(newAssignment);
+        setModal('');
+        setToast('Homework assigned to the classroom.');
+      } else if (modal === 'material') {
+        let uploadedFile: FileAttachment | undefined;
+        const file = fd.get('file');
+
+        if (file instanceof File && file.size > 0) {
+          const uploadData = new FormData();
+          uploadData.append('file', file);
+          const uploadRes = await fetch('/api/files', {
+            method: 'POST',
+            body: uploadData,
+          });
+          if (!uploadRes.ok) throw new Error(await uploadRes.text());
+          uploadedFile = (await uploadRes.json()) as FileAttachment;
+        }
+
+        const newMaterial: MaterialEntry = {
+          id: crypto.randomUUID(),
+          kind: 'material',
+          title,
+          type,
+          color: 'mint',
+          icon: '📖',
+          body: String(fd.get('body') || ''),
+          file: uploadedFile,
+          interactive,
+        };
+        await saveEntry(newMaterial);
+        setModal('');
+        setToast('Material added to classroom.');
+      }
+    });
+  };
+
+  // Build submission lookup map for active assignment across all students
+  const activeStudentSubmissions = useMemo(() => {
+    if (!active) return {};
+    const map: Record<string, SubmissionEntry | undefined> = {};
+    for (const st of STUDENTS) {
+      map[st.id] = getSubmission(active.id, st.id);
+    }
+    return map;
+  }, [active, getSubmission]);
+
+  if (checkingAuth) {
+    return (
+      <div
+        style={{
+          minHeight: '100vh',
+          display: 'grid',
+          placeItems: 'center',
+          background: '#fafbf8',
+          color: '#5b7264',
+          fontSize: '14px',
+        }}
+      >
+        Opening your classroom…
+      </div>
+    );
+  }
+
+  if (!currentUser) {
+    return <LoginView onLoginSuccess={applyUserSession} />;
+  }
+
+  return (
+    <div className="shell">
+      <Sidebar
+        page={page}
+        role={role}
+        selectedStudent={selectedStudent}
+        totalAssignments={allAssignments.length}
+        completedAssignments={completedCount}
+        onNavigate={navigateTo}
+      />
+
+      <div className="main">
+        <Header
+          page={page}
+          role={role}
+          onRoleChange={setRole}
+          selectedStudent={selectedStudent}
+          onStudentChange={handleStudentChange}
+          onLogout={handleLogout}
+        />
+
+        <main>
+          {error && <div className="notice">{error}</div>}
+
+          {!loaded && !error && <div className="notice">Loading your saved classroom…</div>}
+
+          {page === 'Home' && (
+            <HomeView
+              role={role}
+              currentStudent={selectedStudent}
+              assignments={allAssignments}
+              resources={allMaterials}
+              completedCount={completedCount}
+              getStatus={getHomeworkStatus}
+              getStudentSubmissions={getStudentSubmissions}
+              onOpenAssignment={openAssignment}
+              onOpenResource={(res) => {
+                setResource(res);
+                setModal('resource');
+              }}
+              onNavigate={navigateTo}
+            />
+          )}
+
+          {page === 'Homework' && (
+            <HomeworkView
+              role={role}
+              assignments={allAssignments}
+              filter={filter}
+              onFilterChange={setFilter}
+              getStatus={getHomeworkStatus}
+              getStudentSubmissions={getStudentSubmissions}
+              onOpenAssignment={openAssignment}
+              onOpenCreateModal={() => setModal('assignment')}
+            />
+          )}
+
+          {page === 'Materials' && (
+            <MaterialsView
+              role={role}
+              resources={allMaterials}
+              query={query}
+              onQueryChange={setQuery}
+              onOpenResource={(res) => {
+                setResource(res);
+                setModal('resource');
+              }}
+              onOpenCreateModal={() => setModal('material')}
+            />
+          )}
+
+          {page === 'Messages' && (
+            <MessagesView
+              role={role}
+              currentStudent={selectedStudent}
+              messages={allMessages}
+              messageText={message}
+              onMessageTextChange={setMessage}
+              onSendMessage={handleSendMessage}
+              busy={busy}
+              loaded={loaded}
+            />
+          )}
+
+          {page === 'Editor' && active && (
+            <EditorView
+              role={role}
+              assignment={active}
+              currentStudent={selectedStudent}
+              reviewingStudent={reviewingStudent}
+              onReviewingStudentChange={handleReviewingStudentChange}
+              studentSubmissions={activeStudentSubmissions}
+              draft={draft}
+              onDraftChange={(val) => {
+                setDraft(val);
+                setDirty(true);
+              }}
+              files={files}
+              onUploadFiles={uploadFiles}
+              onRemoveFile={(idx) => {
+                setFiles(files.filter((_, n) => n !== idx));
+                setDirty(true);
+              }}
+              onSaveDraft={() => submitHomework('Draft')}
+              onSubmitHomework={() => submitHomework('Handed in')}
+              onActivityComplete={handleActivityComplete}
+              submission={
+                role === 'Teacher'
+                  ? getSubmission(active.id, reviewingStudent.id)
+                  : getSubmission(active.id, selectedStudent.id)
+              }
+              feedback={feedback}
+              onFeedbackChange={setFeedback}
+              onReturnFeedback={() =>
+                action(async () => {
+                  const targetSub = getSubmission(active.id, reviewingStudent.id);
+                  if (!targetSub) return;
+                  await saveEntry({
+                    ...targetSub,
+                    feedback,
+                    status: 'Reviewed',
+                  });
+                  setToast(`Feedback saved and returned to ${reviewingStudent.name}.`);
+                })
+              }
+              dirty={dirty}
+              busy={busy}
+              loaded={loaded}
+              onBack={() => navigateTo('Homework')}
+              onOpenWritingGuide={() => {
+                setResource(INITIAL_MATERIALS[0]);
+                setModal('resource');
+              }}
+            />
+          )}
+
+          <footer>
+            Made for curious minds and growing writers.{' '}
+            <span>Little steps, every day. ✦</span>
+          </footer>
+        </main>
+      </div>
+
+      {modal === 'resource' && resource && (
+        <ResourceModal
+          resource={resource}
+          currentStudent={selectedStudent}
+          onClose={() => setModal('')}
+        />
+      )}
+
+      {(modal === 'assignment' || modal === 'material') && (
+        <CreateModal
+          type={modal}
+          busy={busy}
+          loaded={loaded}
+          onClose={() => setModal('')}
+          onSubmit={handleCreateModalSubmit}
+        />
+      )}
+
+      {toast && <Toast message={toast} onDismiss={() => setToast('')} />}
+    </div>
+  );
 }

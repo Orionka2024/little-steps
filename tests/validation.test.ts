@@ -1,0 +1,175 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {
+  EntryPayloadSchema,
+  AssignmentPayloadSchema,
+  SubmissionPayloadSchema,
+  MaterialPayloadSchema,
+  MessagePayloadSchema,
+  FileAttachmentSchema,
+  InteractiveActivitySchema,
+} from '../lib/validation.ts';
+import { INITIAL_ASSIGNMENTS, INITIAL_MATERIALS } from '../lib/initial-data.ts';
+
+test('FileAttachmentSchema validates file constraints', () => {
+  const validFile = {
+    key: 'user123/file.pdf',
+    name: 'essay.pdf',
+    size: 5000,
+  };
+  assert.ok(FileAttachmentSchema.safeParse(validFile).success);
+
+  // Exceeds 10MB
+  const oversizeFile = {
+    key: 'user123/huge.pdf',
+    name: 'huge.pdf',
+    size: 11 * 1024 * 1024,
+  };
+  assert.strictEqual(FileAttachmentSchema.safeParse(oversizeFile).success, false);
+});
+
+test('AssignmentPayloadSchema validates required assignment fields', () => {
+  const validAssignment = {
+    id: 'a100',
+    kind: 'assignment',
+    title: 'My Favourite Memory',
+    type: 'Descriptive essay',
+    due: '2026-11-15',
+    minutes: 25,
+    description: 'Write about a memorable experience.',
+    instructions: 'Tell us who was there and how it felt.',
+    color: 'peach',
+  };
+  const result = AssignmentPayloadSchema.safeParse(validAssignment);
+  assert.ok(result.success);
+
+  // Missing title
+  const invalid = {
+    id: 'a101',
+    kind: 'assignment',
+    type: 'Opinion',
+  };
+  assert.strictEqual(AssignmentPayloadSchema.safeParse(invalid).success, false);
+});
+
+test('InteractiveActivitySchema validates quiz and word scramble edutainment', () => {
+  const quiz = {
+    type: 'quiz',
+    title: 'Warm-up Quiz',
+    questions: [
+      {
+        question: 'What is a metaphor?',
+        options: ['Direct comparison', 'A vegetable', 'A punctuation mark'],
+        correctIndex: 0,
+        explanation: 'A metaphor compares two things directly.',
+      },
+    ],
+  };
+  assert.ok(InteractiveActivitySchema.safeParse(quiz).success);
+
+  const wordScramble = {
+    type: 'word_scramble',
+    title: 'Spelling Hunt',
+    words: [
+      {
+        scrambled: 'COZY',
+        word: 'COZY',
+        hint: 'Warm and comfortable',
+      },
+    ],
+  };
+  assert.ok(InteractiveActivitySchema.safeParse(wordScramble).success);
+
+  const connectors = {
+    type: 'connecting_words',
+    title: 'Connector Challenge',
+    pairs: [
+      {
+        phrase: 'However',
+        category: 'Show a difference',
+      },
+    ],
+  };
+  assert.ok(InteractiveActivitySchema.safeParse(connectors).success);
+});
+
+test('SubmissionPayloadSchema handles draft, student attribution, and edutainment score', () => {
+  const validSubmission = {
+    id: 's-a1-hajun',
+    kind: 'submission',
+    assignment: 'a1',
+    studentId: 'hajun',
+    studentName: 'Hajun',
+    text: 'Once upon a time in autumn...',
+    files: [
+      {
+        key: 'user/img1.png',
+        name: 'img1.png',
+        size: 1024,
+      },
+    ],
+    status: 'Handed in',
+    feedback: 'Great opening paragraph!',
+    activityScore: {
+      score: 3,
+      total: 3,
+      completedAt: new Date().toISOString(),
+    },
+  };
+  const parsed = SubmissionPayloadSchema.safeParse(validSubmission);
+  assert.ok(parsed.success);
+});
+
+test('MessagePayloadSchema validates student and teacher chat', () => {
+  const validMessage = {
+    id: 'msg-1',
+    kind: 'message',
+    text: 'Could you give an example of a good transition word?',
+    sender: 'Hajun',
+    studentId: 'hajun',
+    time: new Date().toISOString(),
+  };
+  assert.ok(MessagePayloadSchema.safeParse(validMessage).success);
+
+  // Empty text should fail
+  const emptyMessage = {
+    id: 'msg-2',
+    kind: 'message',
+    text: '',
+    sender: 'Teacher',
+    time: new Date().toISOString(),
+  };
+  assert.strictEqual(MessagePayloadSchema.safeParse(emptyMessage).success, false);
+});
+
+test('EntryPayloadSchema validates through discriminated union', () => {
+  const assignmentEntry = {
+    id: 'a-union',
+    kind: 'assignment',
+    title: 'Autumn Leaves',
+    type: 'Poem',
+    due: '2026-12-01',
+    description: 'Describe autumn colors.',
+    instructions: 'Use sensory details.',
+  };
+  const parsed = EntryPayloadSchema.safeParse(assignmentEntry);
+  assert.ok(parsed.success);
+
+  const unknownKind = {
+    id: 'unknown-1',
+    kind: 'unsupported_type',
+  };
+  assert.strictEqual(EntryPayloadSchema.safeParse(unknownKind).success, false);
+});
+
+test('Initial datasets adhere to domain constraints and interactive rules', () => {
+  for (const assignment of INITIAL_ASSIGNMENTS) {
+    const result = AssignmentPayloadSchema.safeParse(assignment);
+    assert.ok(result.success, `Initial assignment ${assignment.id} must be valid`);
+  }
+
+  for (const material of INITIAL_MATERIALS) {
+    const result = MaterialPayloadSchema.safeParse(material);
+    assert.ok(result.success, `Initial material ${material.id} must be valid`);
+  }
+});
