@@ -345,7 +345,7 @@ export default function App() {
         prev.filter(
           (r) =>
             r.id !== submissionId &&
-            (r as Record<string, unknown>).localId !== submissionId &&
+            (r as unknown as { localId?: string }).localId !== submissionId &&
             !(isSubmission(r) && r.assignment === active.id && r.studentId === targetStudent.id)
         )
       );
