@@ -327,6 +327,36 @@ export default function App() {
     });
   }
 
+  const handleResetSubmission = () => {
+    if (!active) return;
+    const targetStudent = role === 'Teacher' ? reviewingStudent : selectedStudent;
+    const submissionId = `s-${active.id}-${targetStudent.id}`;
+
+    action(async () => {
+      const res = await fetch(`/api/data?id=${encodeURIComponent(submissionId)}`, {
+        method: 'DELETE',
+      });
+      if (!res.ok) {
+        const data = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(data.error || 'Failed to remove submission');
+      }
+
+      setRows((prev) =>
+        prev.filter(
+          (r) =>
+            r.id !== submissionId &&
+            (r as Record<string, unknown>).localId !== submissionId &&
+            !(isSubmission(r) && r.assignment === active.id && r.studentId === targetStudent.id)
+        )
+      );
+      setDraft('');
+      setFiles([]);
+      setFeedback('');
+      setDirty(false);
+      setToast(`Submission data for ${targetStudent.name} has been reset.`);
+    });
+  };
+
   // Student completes a warm-up edutainment activity in Editor
   const handleActivityComplete = (score: number, total: number) => {
     if (!active) return;
@@ -607,6 +637,7 @@ export default function App() {
               }}
               onSaveDraft={() => submitHomework('Draft')}
               onSubmitHomework={() => submitHomework('Handed in')}
+              onResetSubmission={handleResetSubmission}
               onActivityComplete={handleActivityComplete}
               submission={
                 role === 'Teacher'

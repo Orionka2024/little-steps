@@ -1,5 +1,10 @@
 import { getCurrentUser } from '../../../lib/auth-server';
-import { getStoredRecords, upsertStoredRecord } from '../../../lib/storage';
+import {
+  getStoredRecords,
+  upsertStoredRecord,
+  deleteStoredRecord,
+  deleteStoredRecordsByStudent,
+} from '../../../lib/storage';
 import { EntryPayloadSchema } from '../../../lib/validation';
 
 export async function GET() {
@@ -70,4 +75,40 @@ export async function POST(req: Request) {
   );
 
   return Response.json({ ok: true });
+}
+
+export async function DELETE(req: Request) {
+  const user = await getCurrentUser();
+  if (!user) {
+    return Response.json(
+      { error: 'Please sign in first.' },
+      { status: 401 }
+    );
+  }
+
+  const url = new URL(req.url);
+  const id = url.searchParams.get('id');
+  const studentId = url.searchParams.get('studentId');
+
+  if (studentId) {
+    // Only teacher or the matching student can clear student submissions
+    if (user.role !== 'Teacher' && user.studentId !== studentId) {
+      return Response.json(
+        { error: 'You are not authorized to clear this student data.' },
+        { status: 403 }
+      );
+    }
+    const count = await deleteStoredRecordsByStudent(studentId);
+    return Response.json({ ok: true, removed: count });
+  }
+
+  if (id) {
+    const success = await deleteStoredRecord(id, 'local_seedy');
+    return Response.json({ ok: true, deleted: success });
+  }
+
+  return Response.json(
+    { error: 'Missing id or studentId parameter.' },
+    { status: 400 }
+  );
 }

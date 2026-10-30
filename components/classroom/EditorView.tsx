@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { ArrowLeft, Paperclip, X, Send, ChevronRight, Check, Sparkles } from 'lucide-react';
+import { ArrowLeft, Paperclip, X, Send, ChevronRight, Check, Sparkles, Trash2 } from 'lucide-react';
 import type {
   AssignmentEntry,
   FileAttachment,
@@ -26,6 +26,7 @@ interface EditorViewProps {
   onRemoveFile: (index: number) => void;
   onSaveDraft: () => void;
   onSubmitHomework: () => void;
+  onResetSubmission?: () => void;
   submission?: SubmissionEntry;
   feedback: string;
   onFeedbackChange: (text: string) => void;
@@ -52,6 +53,7 @@ export function EditorView({
   onRemoveFile,
   onSaveDraft,
   onSubmitHomework,
+  onResetSubmission,
   submission,
   feedback,
   onFeedbackChange,
@@ -210,9 +212,32 @@ export function EditorView({
                   : 'Ready when you are'}
               </span>
               {role === 'Student' && (
-                <button disabled={busy || !loaded} onClick={onSaveDraft}>
-                  Save draft
-                </button>
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                  {(submission || draft.length > 0) && onResetSubmission && (
+                    <button
+                      type="button"
+                      style={{
+                        background: 'none',
+                        border: 'none',
+                        color: '#9ba89f',
+                        fontSize: '12px',
+                        cursor: 'pointer',
+                        padding: '4px 8px',
+                      }}
+                      disabled={busy || !loaded}
+                      onClick={() => {
+                        if (confirm('Clear your current draft and start over?')) {
+                          onResetSubmission();
+                        }
+                      }}
+                    >
+                      Clear draft
+                    </button>
+                  )}
+                  <button disabled={busy || !loaded} onClick={onSaveDraft}>
+                    Save draft
+                  </button>
+                </div>
               )}
             </div>
           </div>
@@ -348,6 +373,38 @@ export function EditorView({
                 >
                   Return feedback to {reviewingStudent.name} <Check size={16} />
                 </button>
+                {submission && onResetSubmission && (
+                  <button
+                    type="button"
+                    style={{
+                      marginTop: '10px',
+                      width: '100%',
+                      background: '#fff',
+                      border: '1px solid #ebd0cf',
+                      color: '#a32b29',
+                      padding: '8px 12px',
+                      borderRadius: '8px',
+                      fontSize: '12px',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '6px',
+                    }}
+                    disabled={busy || !loaded}
+                    onClick={() => {
+                      if (
+                        confirm(
+                          `Reset and clear all homework data for ${reviewingStudent.name}? This will return their assignment to 'To do'.`
+                        )
+                      ) {
+                        onResetSubmission();
+                      }
+                    }}
+                  >
+                    <Trash2 size={13} /> Reset {reviewingStudent.name}’s submission
+                  </button>
+                )}
                 {!submission && (
                   <small>
                     {reviewingStudent.name} has not submitted any work yet.
