@@ -53,6 +53,7 @@ export default function App() {
   const [draft, setDraft] = useState<string>('');
   const [files, setFiles] = useState<FileAttachment[]>([]);
   const [feedback, setFeedback] = useState<string>('');
+  const [annotations, setAnnotations] = useState<string>('');
   const [message, setMessage] = useState<string>('');
   const [dirty, setDirty] = useState<boolean>(false);
 
@@ -216,6 +217,7 @@ export default function App() {
     setDraft(existingSubmission?.text || '');
     setFiles(existingSubmission?.files || []);
     setFeedback(existingSubmission?.feedback || '');
+    setAnnotations(existingSubmission?.annotations || '');
     setDirty(false);
     setPage('Editor');
   }
@@ -228,6 +230,7 @@ export default function App() {
     setDraft(existingSubmission?.text || '');
     setFiles(existingSubmission?.files || []);
     setFeedback(existingSubmission?.feedback || '');
+    setAnnotations(existingSubmission?.annotations || '');
     setDirty(false);
   }
 
@@ -239,6 +242,7 @@ export default function App() {
       setDraft(existingSubmission?.text || '');
       setFiles(existingSubmission?.files || []);
       setFeedback(existingSubmission?.feedback || '');
+      setAnnotations(existingSubmission?.annotations || '');
       setDirty(false);
     }
   }
@@ -352,6 +356,7 @@ export default function App() {
       setDraft('');
       setFiles([]);
       setFeedback('');
+      setAnnotations('');
       setDirty(false);
       setToast(`Submission data for ${targetStudent.name} has been reset.`);
     });
@@ -638,6 +643,20 @@ export default function App() {
               onSaveDraft={() => submitHomework('Draft')}
               onSubmitHomework={() => submitHomework('Handed in')}
               onResetSubmission={handleResetSubmission}
+              onSaveAnnotations={(newAnnotations) => {
+                setAnnotations(newAnnotations);
+                const targetSub = getSubmission(active.id, reviewingStudent.id);
+                if (targetSub) {
+                  action(async () => {
+                    await saveEntry({
+                      ...targetSub,
+                      annotations: newAnnotations,
+                      updated: new Date().toISOString(),
+                    });
+                    setToast(`Apple Pencil markings saved for ${reviewingStudent.name}.`);
+                  });
+                }
+              }}
               onActivityComplete={handleActivityComplete}
               submission={
                 role === 'Teacher'
@@ -653,9 +672,15 @@ export default function App() {
                   await saveEntry({
                     ...targetSub,
                     feedback,
+                    annotations,
                     status: 'Reviewed',
+                    updated: new Date().toISOString(),
                   });
-                  setToast(`Feedback saved and returned to ${reviewingStudent.name}.`);
+                  setToast(
+                    annotations
+                      ? `Feedback and Apple Pencil markings returned to ${reviewingStudent.name}.`
+                      : `Feedback saved and returned to ${reviewingStudent.name}.`
+                  );
                 })
               }
               dirty={dirty}

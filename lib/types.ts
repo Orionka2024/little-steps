@@ -98,6 +98,19 @@ export interface MaterialEntry {
   localId?: string;
 }
 
+export interface AnnotationPoint {
+  x: number;
+  y: number;
+  pressure?: number;
+}
+
+export interface AnnotationStroke {
+  color: string;
+  size: number;
+  isHighlighter?: boolean;
+  points: AnnotationPoint[];
+}
+
 export interface SubmissionEntry {
   id: string;
   kind: 'submission';
@@ -108,6 +121,7 @@ export interface SubmissionEntry {
   files: FileAttachment[];
   status: HomeworkStatus;
   feedback?: string;
+  annotations?: string;
   activityScore?: ActivityScore;
   updated?: string;
   localId?: string;

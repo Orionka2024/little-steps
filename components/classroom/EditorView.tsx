@@ -1,7 +1,17 @@
 'use client';
 
-import React from 'react';
-import { ArrowLeft, Paperclip, X, Send, ChevronRight, Check, Sparkles, Trash2 } from 'lucide-react';
+import React, { useState } from 'react';
+import {
+  ArrowLeft,
+  Paperclip,
+  X,
+  Send,
+  ChevronRight,
+  Check,
+  Sparkles,
+  Trash2,
+  PenTool,
+} from 'lucide-react';
 import type {
   AssignmentEntry,
   FileAttachment,
@@ -11,6 +21,7 @@ import type {
 } from '../../lib/types';
 import { STUDENTS } from '../../lib/types';
 import { InteractiveActivityContainer } from './interactive/InteractiveActivityContainer';
+import { AnnotationCanvas } from './AnnotationCanvas';
 
 interface EditorViewProps {
   role: Role;
@@ -27,6 +38,7 @@ interface EditorViewProps {
   onSaveDraft: () => void;
   onSubmitHomework: () => void;
   onResetSubmission?: () => void;
+  onSaveAnnotations?: (annotations: string) => void;
   submission?: SubmissionEntry;
   feedback: string;
   onFeedbackChange: (text: string) => void;
@@ -54,6 +66,7 @@ export function EditorView({
   onSaveDraft,
   onSubmitHomework,
   onResetSubmission,
+  onSaveAnnotations,
   submission,
   feedback,
   onFeedbackChange,
@@ -65,6 +78,21 @@ export function EditorView({
   onBack,
   onOpenWritingGuide,
 }: EditorViewProps) {
+  const [markupMode, setMarkupMode] = useState<boolean>(false);
+  const [showStudentMarkup, setShowStudentMarkup] = useState<boolean>(true);
+  const [localAnnotations, setLocalAnnotations] = useState<string | null>(null);
+  const [prevSubmissionKey, setPrevSubmissionKey] = useState<string | undefined>(
+    submission?.id
+  );
+
+  // Adjust state during render if target submission changed (React recommended pattern)
+  if (submission?.id !== prevSubmissionKey) {
+    setPrevSubmissionKey(submission?.id);
+    setLocalAnnotations(null);
+  }
+
+  const annotations = localAnnotations ?? (submission?.annotations || '');
+
   const wordCount = draft.trim() ? draft.trim().split(/\s+/).length : 0;
   const formattedDueDate = new Date(`${assignment.due}T12:00:00`).toLocaleDateString('en-GB', {
     month: 'long',
@@ -178,26 +206,149 @@ export function EditorView({
 
           <div className="writing-box">
             <div className="writing-top">
-              <h3>
-                {role === 'Teacher'
-                  ? `${reviewingStudent.name}’s essay (${submission?.status || 'To do'})`
-                  : `Your first draft starts here (${currentStudent.name})`}
-              </h3>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                <h3>
+                  {role === 'Teacher'
+                    ? `${reviewingStudent.name}’s essay (${submission?.status || 'To do'})`
+                    : `Your first draft starts here (${currentStudent.name})`}
+                </h3>
+
+                {/* Teacher iPad Pencil Markup Toggle */}
+                {role === 'Teacher' && (
+                  <button
+                    type="button"
+                    onClick={() => setMarkupMode(!markupMode)}
+                    title="Write comments and corrections directly on the essay with your Apple Pencil"
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '5px',
+                      padding: '4px 10px',
+                      borderRadius: '6px',
+                      fontSize: '11px',
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                      border: markupMode ? '1px solid #16a34a' : '1px solid #d2ded0',
+                      background: markupMode ? '#f0fdf4' : '#f5f8f4',
+                      color: markupMode ? '#15803d' : '#45594b',
+                      transition: 'all 0.15s ease',
+                    }}
+                  >
+                    <PenTool size={13} />
+                    {markupMode ? '✍️ Apple Pencil Markup: ON' : '✍️ Apple Pencil Markup'}
+                  </button>
+                )}
+
+                {/* Student View Teacher Markup Toggle */}
+                {role === 'Student' && submission?.annotations && (
+                  <button
+                    type="button"
+                    onClick={() => setShowStudentMarkup(!showStudentMarkup)}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '5px',
+                      padding: '4px 9px',
+                      borderRadius: '6px',
+                      fontSize: '11px',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      border: showStudentMarkup ? '1px solid #16a34a' : '1px solid #d2ded0',
+                      background: showStudentMarkup ? '#f0fdf4' : '#f5f8f4',
+                      color: showStudentMarkup ? '#15803d' : '#57675c',
+                    }}
+                  >
+                    <Sparkles size={13} color="#16a34a" />
+                    {showStudentMarkup ? 'Teacher Notes: Visible' : 'View Teacher Notes'}
+                  </button>
+                )}
+              </div>
+
               <span>{wordCount} words</span>
             </div>
 
-            <textarea
-              aria-label="Essay draft"
-              placeholder={
-                role === 'Teacher'
-                  ? `${reviewingStudent.name} has not written an essay yet.`
-                  : 'I want to tell you about…'
-              }
-              value={draft}
-              readOnly={role === 'Teacher'}
-              onChange={(e) => onDraftChange(e.target.value)}
-              maxLength={50000}
-            />
+            {role === 'Teacher' && markupMode ? (
+              <div style={{ width: '100%' }}>
+                {/* Annotation Canvas with toolbar */}
+                <AnnotationCanvas
+                  key={`teacher-${reviewingStudent.id}-${submission?.id || 'new'}`}
+                  initialData={annotations}
+                  onSave={(data) => {
+                    setLocalAnnotations(data);
+                    onSaveAnnotations?.(data);
+                  }}
+                  readOnly={false}
+                  studentName={reviewingStudent.name}
+                />
+
+                {/* Ruled Notebook Paper showing student's essay underneath the canvas */}
+                <div
+                  style={{
+                    position: 'relative',
+                    minHeight: '400px',
+                    padding: '24px 28px',
+                    fontFamily: "'DM Sans', sans-serif",
+                    fontSize: '16px',
+                    lineHeight: '2.4rem',
+                    color: '#273f3b',
+                    whiteSpace: 'pre-wrap',
+                    background: '#fdfdfb',
+                    backgroundImage:
+                      'repeating-linear-gradient(transparent, transparent 2.3rem, #eaf0e7 2.3rem, #eaf0e7 2.4rem)',
+                    backgroundAttachment: 'local',
+                  }}
+                >
+                  {draft.trim() ? (
+                    draft
+                  ) : (
+                    <div style={{ color: '#88988b', fontStyle: 'italic', paddingTop: '20px' }}>
+                      {reviewingStudent.name} hasn’t submitted an essay yet. You can still use your
+                      Apple Pencil to write guidance or practice prompts on this paper.
+                    </div>
+                  )}
+                </div>
+              </div>
+            ) : role === 'Student' && submission?.annotations && showStudentMarkup ? (
+              <div style={{ width: '100%' }}>
+                <AnnotationCanvas
+                  key={`student-${submission.id}`}
+                  initialData={submission.annotations}
+                  readOnly={true}
+                  studentName={currentStudent.name}
+                />
+                <div
+                  style={{
+                    position: 'relative',
+                    minHeight: '360px',
+                    padding: '24px 28px',
+                    fontFamily: "'DM Sans', sans-serif",
+                    fontSize: '16px',
+                    lineHeight: '2.4rem',
+                    color: '#273f3b',
+                    whiteSpace: 'pre-wrap',
+                    background: '#fdfdfb',
+                    backgroundImage:
+                      'repeating-linear-gradient(transparent, transparent 2.3rem, #eaf0e7 2.3rem, #eaf0e7 2.4rem)',
+                    backgroundAttachment: 'local',
+                  }}
+                >
+                  {draft || 'No text written yet.'}
+                </div>
+              </div>
+            ) : (
+              <textarea
+                aria-label="Essay draft"
+                placeholder={
+                  role === 'Teacher'
+                    ? `${reviewingStudent.name} has not written an essay yet.`
+                    : 'I want to tell you about…'
+                }
+                value={draft}
+                readOnly={role === 'Teacher'}
+                onChange={(e) => onDraftChange(e.target.value)}
+                maxLength={50000}
+              />
+            )}
 
             <div className="writing-bottom">
               <span>
@@ -368,10 +519,11 @@ export function EditorView({
                 />
                 <button
                   className="primary"
-                  disabled={busy || !submission || !feedback.trim()}
+                  disabled={busy || !submission || (!feedback.trim() && !annotations)}
                   onClick={onReturnFeedback}
                 >
-                  Return feedback to {reviewingStudent.name} <Check size={16} />
+                  {annotations ? 'Return feedback & markings' : 'Return feedback'} to{' '}
+                  {reviewingStudent.name} <Check size={16} />
                 </button>
                 {submission && onResetSubmission && (
                   <button

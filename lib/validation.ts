@@ -93,6 +93,7 @@ export const SubmissionPayloadSchema = z.object({
   files: z.array(FileAttachmentSchema).default([]),
   status: z.enum(['To do', 'Draft', 'Handed in', 'Reviewed']).default('Draft'),
   feedback: z.string().max(10000).optional().default(''),
+  annotations: z.string().max(500000).optional(),
   activityScore: ActivityScoreSchema.optional(),
   updated: z.string().optional(),
   localId: z.string().optional(),

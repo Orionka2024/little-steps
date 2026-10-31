@@ -30,7 +30,7 @@ export async function POST(req: Request) {
   }
 
   const bodyText = await req.text();
-  if (bodyText.length > 150000) {
+  if (bodyText.length > 600000) {
     return Response.json(
       { error: 'This entry is too long.' },
       { status: 413 }
