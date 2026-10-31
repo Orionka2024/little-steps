@@ -15,10 +15,11 @@ import {
 import type { AnnotationStroke, AnnotationPoint } from '../../lib/types';
 
 interface AnnotationCanvasProps {
-  initialData?: string; // serialized JSON array of AnnotationStroke
+  initialData?: string;
   onSave?: (data: string) => void;
   readOnly?: boolean;
   studentName?: string;
+  children: React.ReactNode;
 }
 
 const PEN_COLORS = [
@@ -40,8 +41,9 @@ export function AnnotationCanvas({
   onSave,
   readOnly = false,
   studentName,
+  children,
 }: AnnotationCanvasProps) {
-  const containerRef = useRef<HTMLDivElement>(null);
+  const paperAreaRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   const [tool, setTool] = useState<'pen' | 'highlighter' | 'eraser'>('pen');
@@ -66,16 +68,22 @@ export function AnnotationCanvas({
   // Redraw all strokes on canvas with high-DPI scaling
   const redrawCanvas = useCallback(() => {
     const canvas = canvasRef.current;
-    if (!canvas) return;
+    const paperArea = paperAreaRef.current;
+    if (!canvas || !paperArea) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
     const dpr = window.devicePixelRatio || 1;
-    const rect = canvas.getBoundingClientRect();
+    const rect = paperArea.getBoundingClientRect();
 
-    if (canvas.width !== Math.floor(rect.width * dpr) || canvas.height !== Math.floor(rect.height * dpr)) {
-      canvas.width = Math.floor(rect.width * dpr);
-      canvas.height = Math.floor(rect.height * dpr);
+    if (rect.width > 0 && rect.height > 0) {
+      const targetWidth = Math.floor(rect.width * dpr);
+      const targetHeight = Math.floor(rect.height * dpr);
+
+      if (canvas.width !== targetWidth || canvas.height !== targetHeight) {
+        canvas.width = targetWidth;
+        canvas.height = targetHeight;
+      }
     }
 
     ctx.save();
@@ -106,8 +114,8 @@ export function AnnotationCanvas({
       ctx.lineJoin = 'round';
 
       if (stroke.isHighlighter) {
-        ctx.strokeStyle = 'rgba(250, 204, 21, 0.42)';
-        ctx.lineWidth = stroke.size * 2.8;
+        ctx.strokeStyle = 'rgba(250, 204, 21, 0.45)';
+        ctx.lineWidth = stroke.size * 3;
       } else {
         ctx.strokeStyle = stroke.color;
         ctx.lineWidth = stroke.size;
@@ -131,12 +139,22 @@ export function AnnotationCanvas({
     ctx.restore();
   }, [strokes, visible]);
 
-  // Redraw when strokes, visibility, or window resize changes
+  // Keep canvas matched with container size using ResizeObserver
   useEffect(() => {
     redrawCanvas();
-    const handleResize = () => redrawCanvas();
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
+    const paper = paperAreaRef.current;
+    if (!paper) return;
+
+    const observer = new ResizeObserver(() => {
+      redrawCanvas();
+    });
+    observer.observe(paper);
+
+    window.addEventListener('resize', redrawCanvas);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener('resize', redrawCanvas);
+    };
   }, [redrawCanvas]);
 
   // Notify parent of updated strokes
@@ -202,8 +220,7 @@ export function AnnotationCanvas({
     const pt = getCanvasPoint(e);
 
     if (tool === 'eraser') {
-      // Erase any stroke near point
-      const threshold = 18;
+      const threshold = 20;
       const remaining = strokes.filter(
         (st) => !st.points.some((p) => isNearPoint(p, pt, threshold))
       );
@@ -232,7 +249,7 @@ export function AnnotationCanvas({
     const pt = getCanvasPoint(e);
 
     if (tool === 'eraser') {
-      const threshold = 18;
+      const threshold = 20;
       const remaining = strokes.filter(
         (st) => !st.points.some((p) => isNearPoint(p, pt, threshold))
       );
@@ -263,11 +280,10 @@ export function AnnotationCanvas({
         ctx.lineJoin = 'round';
 
         if (stroke.isHighlighter) {
-          ctx.strokeStyle = 'rgba(250, 204, 21, 0.42)';
-          ctx.lineWidth = stroke.size * 2.8;
+          ctx.strokeStyle = 'rgba(250, 204, 21, 0.45)';
+          ctx.lineWidth = stroke.size * 3;
         } else {
           ctx.strokeStyle = stroke.color;
-          // Pressure scaling
           const pressure = pt.pressure || 0.5;
           ctx.lineWidth = stroke.size * (0.6 + pressure * 0.8);
         }
@@ -288,7 +304,7 @@ export function AnnotationCanvas({
     try {
       e.currentTarget.releasePointerCapture(e.pointerId);
     } catch {
-      // Ignore if not captured
+      // Ignore
     }
 
     if (currentStrokeRef.current && currentStrokeRef.current.points.length > 0) {
@@ -300,93 +316,95 @@ export function AnnotationCanvas({
 
   return (
     <div
-      ref={containerRef}
       style={{
         position: 'relative',
         width: '100%',
         borderRadius: '12px',
+        overflow: 'hidden',
+        border: '1px solid #d8e2d4',
+        background: '#ffffff',
       }}
     >
-      {/* Teacher Toolbar */}
+      {/* 1. TEACHER TOOLBAR - Completely outside the canvas (zIndex: 30) */}
       {!readOnly && (
         <div
           style={{
+            position: 'relative',
+            zIndex: 30, // Higher than canvas to ensure all clicks register
             display: 'flex',
             flexWrap: 'wrap',
             alignItems: 'center',
             justifyContent: 'space-between',
             gap: '8px',
             background: '#ffffff',
-            border: '1px solid #d8e2d4',
-            borderRadius: '10px 10px 0 0',
-            padding: '8px 12px',
-            borderBottom: 'none',
+            borderBottom: '1px solid #e2ebd8',
+            padding: '10px 14px',
           }}
         >
           {/* Tool selectors */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
             <button
               type="button"
               onClick={() => setTool('pen')}
               title="Pen tool"
               style={{
-                display: 'flex',
+                display: 'inline-flex',
                 alignItems: 'center',
-                gap: '5px',
-                padding: '6px 10px',
-                borderRadius: '6px',
-                border: tool === 'pen' ? '1px solid #286654' : '1px solid #e1e7dc',
-                background: tool === 'pen' ? '#edf5f1' : '#fff',
-                color: tool === 'pen' ? '#286654' : '#57675c',
-                fontWeight: 600,
+                gap: '6px',
+                padding: '7px 12px',
+                borderRadius: '7px',
+                border: tool === 'pen' ? '2px solid #286654' : '1px solid #d8e2d4',
+                background: tool === 'pen' ? '#edf6f2' : '#ffffff',
+                color: tool === 'pen' ? '#286654' : '#45594b',
+                fontWeight: 700,
                 fontSize: '12px',
                 cursor: 'pointer',
               }}
             >
-              <PenTool size={14} /> Pen
+              <PenTool size={15} /> Pen
             </button>
 
             <button
               type="button"
               onClick={() => setTool('highlighter')}
-              title="Highlighter"
+              title="Highlighter tool"
               style={{
-                display: 'flex',
+                display: 'inline-flex',
                 alignItems: 'center',
-                gap: '5px',
-                padding: '6px 10px',
-                borderRadius: '6px',
+                gap: '6px',
+                padding: '7px 12px',
+                borderRadius: '7px',
                 border:
-                  tool === 'highlighter' ? '1px solid #d97706' : '1px solid #e1e7dc',
-                background: tool === 'highlighter' ? '#fef3c7' : '#fff',
-                color: tool === 'highlighter' ? '#92400e' : '#57675c',
-                fontWeight: 600,
+                  tool === 'highlighter' ? '2px solid #d97706' : '1px solid #d8e2d4',
+                background: tool === 'highlighter' ? '#fef3c7' : '#ffffff',
+                color: tool === 'highlighter' ? '#92400e' : '#45594b',
+                fontWeight: 700,
                 fontSize: '12px',
                 cursor: 'pointer',
               }}
             >
-              <Highlighter size={14} /> Highlight
+              <Highlighter size={15} /> Highlight
             </button>
 
             <button
               type="button"
               onClick={() => setTool('eraser')}
-              title="Eraser"
+              title="Eraser tool"
               style={{
-                display: 'flex',
+                display: 'inline-flex',
                 alignItems: 'center',
-                gap: '5px',
-                padding: '6px 10px',
-                borderRadius: '6px',
-                border: tool === 'eraser' ? '1px solid #b91c1c' : '1px solid #e1e7dc',
-                background: tool === 'eraser' ? '#fee2e2' : '#fff',
-                color: tool === 'eraser' ? '#991b1b' : '#57675c',
-                fontWeight: 600,
+                gap: '6px',
+                padding: '7px 12px',
+                borderRadius: '7px',
+                border: tool === 'eraser' ? '2px solid #dc2626' : '1px solid #d8e2d4',
+                background: tool === 'eraser' ? '#fee2e2' : '#ffffff',
+                color: tool === 'eraser' ? '#991b1b' : '#45594b',
+                fontWeight: 700,
                 fontSize: '12px',
                 cursor: 'pointer',
               }}
             >
-              <Eraser size={14} /> Eraser
+              <Eraser size={15} /> Eraser
             </button>
 
             {/* Color pills when pen is active */}
@@ -395,32 +413,36 @@ export function AnnotationCanvas({
                 style={{
                   display: 'flex',
                   alignItems: 'center',
-                  gap: '4px',
+                  gap: '6px',
                   marginLeft: '4px',
                   borderLeft: '1px solid #e2ebd8',
-                  paddingLeft: '8px',
+                  paddingLeft: '10px',
                 }}
               >
-                {PEN_COLORS.map((c) => (
-                  <button
-                    key={c.id}
-                    type="button"
-                    onClick={() => setActiveColor(c.color)}
-                    title={c.label}
-                    style={{
-                      width: '20px',
-                      height: '20px',
-                      borderRadius: '50%',
-                      background: c.color,
-                      border:
-                        activeColor === c.color
-                          ? '2px solid #273f3b'
-                          : '1px solid rgba(0,0,0,0.15)',
-                      transform: activeColor === c.color ? 'scale(1.15)' : 'none',
-                      cursor: 'pointer',
-                    }}
-                  />
-                ))}
+                {PEN_COLORS.map((c) => {
+                  const isSelected = activeColor === c.color;
+                  return (
+                    <button
+                      key={c.id}
+                      type="button"
+                      onClick={() => setActiveColor(c.color)}
+                      title={c.label}
+                      style={{
+                        width: '26px',
+                        height: '26px',
+                        borderRadius: '50%',
+                        background: c.color,
+                        border: isSelected
+                          ? '3px solid #1c2e27'
+                          : '1px solid rgba(0,0,0,0.2)',
+                        boxShadow: isSelected ? '0 0 0 2px #fff' : 'none',
+                        transform: isSelected ? 'scale(1.15)' : 'none',
+                        cursor: 'pointer',
+                        padding: 0,
+                      }}
+                    />
+                  );
+                })}
               </div>
             )}
 
@@ -431,7 +453,7 @@ export function AnnotationCanvas({
                 alignItems: 'center',
                 gap: '4px',
                 borderLeft: '1px solid #e2ebd8',
-                paddingLeft: '8px',
+                paddingLeft: '10px',
               }}
             >
               {PEN_SIZES.map((s) => (
@@ -441,15 +463,16 @@ export function AnnotationCanvas({
                   onClick={() => setActiveSize(s.size)}
                   title={`${s.label} line`}
                   style={{
-                    padding: '4px 7px',
+                    padding: '6px 9px',
                     fontSize: '11px',
-                    borderRadius: '5px',
+                    fontWeight: activeSize === s.size ? 700 : 500,
+                    borderRadius: '6px',
                     border:
                       activeSize === s.size
                         ? '1px solid #286654'
-                        : '1px solid #e1e7dc',
-                    background: activeSize === s.size ? '#edf5f1' : '#fff',
-                    color: activeSize === s.size ? '#286654' : '#6b7970',
+                        : '1px solid #d8e2d4',
+                    background: activeSize === s.size ? '#edf6f2' : '#fff',
+                    color: activeSize === s.size ? '#286654' : '#647467',
                     cursor: 'pointer',
                   }}
                 >
@@ -466,16 +489,16 @@ export function AnnotationCanvas({
               onClick={() => setPencilOnly(!pencilOnly)}
               title={
                 pencilOnly
-                  ? 'Pencil Only active: Palm rejection enabled'
-                  : 'Enable Apple Pencil only for zero accidental palm marks'
+                  ? 'Apple Pencil Only is active: Hand/palm touch rejected'
+                  : 'Tap to reject all finger/palm touches while drawing with Apple Pencil'
               }
               style={{
-                display: 'flex',
+                display: 'inline-flex',
                 alignItems: 'center',
                 gap: '5px',
-                padding: '5px 9px',
+                padding: '6px 10px',
                 borderRadius: '6px',
-                border: pencilOnly ? '1px solid #16a34a' : '1px solid #d9e2d5',
+                border: pencilOnly ? '1px solid #16a34a' : '1px solid #d8e2d4',
                 background: pencilOnly ? '#f0fdf4' : '#fafbf8',
                 color: pencilOnly ? '#15803d' : '#647467',
                 fontSize: '11px',
@@ -493,15 +516,16 @@ export function AnnotationCanvas({
               disabled={strokes.length === 0}
               title="Undo last stroke"
               style={{
-                display: 'flex',
+                display: 'inline-flex',
                 alignItems: 'center',
                 gap: '4px',
-                padding: '5px 8px',
+                padding: '6px 10px',
                 borderRadius: '6px',
-                border: '1px solid #e1e7dc',
+                border: '1px solid #d8e2d4',
                 background: '#fff',
                 color: '#55665a',
                 fontSize: '11px',
+                fontWeight: 600,
                 cursor: strokes.length > 0 ? 'pointer' : 'not-allowed',
                 opacity: strokes.length > 0 ? 1 : 0.5,
               }}
@@ -515,15 +539,16 @@ export function AnnotationCanvas({
               disabled={strokes.length === 0}
               title="Clear all strokes"
               style={{
-                display: 'flex',
+                display: 'inline-flex',
                 alignItems: 'center',
                 gap: '4px',
-                padding: '5px 8px',
+                padding: '6px 10px',
                 borderRadius: '6px',
                 border: '1px solid #f2cfcd',
                 background: '#fff',
                 color: '#b91c1c',
                 fontSize: '11px',
+                fontWeight: 600,
                 cursor: strokes.length > 0 ? 'pointer' : 'not-allowed',
                 opacity: strokes.length > 0 ? 1 : 0.5,
               }}
@@ -539,9 +564,9 @@ export function AnnotationCanvas({
                   gap: '4px',
                   background: '#dcfce7',
                   color: '#15803d',
-                  padding: '3px 7px',
+                  padding: '4px 8px',
                   borderRadius: '5px',
-                  fontSize: '10px',
+                  fontSize: '11px',
                   fontWeight: 700,
                 }}
               >
@@ -552,17 +577,18 @@ export function AnnotationCanvas({
         </div>
       )}
 
-      {/* Read-Only Student Banner */}
+      {/* 2. READ-ONLY STUDENT BANNER */}
       {readOnly && strokes.length > 0 && (
         <div
           style={{
+            position: 'relative',
+            zIndex: 30,
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
             background: '#f4f8f4',
-            border: '1px solid #c9dec5',
-            borderRadius: '10px 10px 0 0',
-            padding: '8px 14px',
+            borderBottom: '1px solid #c9dec5',
+            padding: '9px 14px',
             fontSize: '12px',
             color: '#255e3a',
             fontWeight: 600,
@@ -580,7 +606,7 @@ export function AnnotationCanvas({
             type="button"
             onClick={() => setVisible(!visible)}
             style={{
-              display: 'flex',
+              display: 'inline-flex',
               alignItems: 'center',
               gap: '4px',
               border: 'none',
@@ -597,33 +623,45 @@ export function AnnotationCanvas({
         </div>
       )}
 
-      {/* Drawing Canvas Overlay */}
-      <canvas
-        ref={canvasRef}
-        onPointerDown={handlePointerDown}
-        onPointerMove={handlePointerMove}
-        onPointerUp={handlePointerUp}
-        onPointerCancel={handlePointerUp}
-        onPointerLeave={handlePointerUp}
+      {/* 3. DRAWING PAPER CONTAINER - Holds essay children + canvas overlay */}
+      <div
+        ref={paperAreaRef}
         style={{
-          position: 'absolute',
-          top: 0,
-          left: 0,
+          position: 'relative',
           width: '100%',
-          height: '100%',
-          zIndex: 10,
-          cursor: readOnly
-            ? 'default'
-            : tool === 'eraser'
-            ? 'crosshair'
-            : tool === 'highlighter'
-            ? 'cell'
-            : 'crosshair',
-          touchAction: 'none', // Crucial for iPad Safari: prevents scroll while drawing with Pencil
-          pointerEvents: readOnly ? 'none' : 'auto',
-          borderRadius: '10px',
+          minHeight: '400px',
         }}
-      />
+      >
+        {/* Essay Text Content (children) rendered underneath */}
+        <div style={{ position: 'relative', zIndex: 1 }}>{children}</div>
+
+        {/* Canvas strictly overlays the essay paper area, NEVER covering toolbar */}
+        <canvas
+          ref={canvasRef}
+          onPointerDown={handlePointerDown}
+          onPointerMove={handlePointerMove}
+          onPointerUp={handlePointerUp}
+          onPointerCancel={handlePointerUp}
+          onPointerLeave={handlePointerUp}
+          style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            width: '100%',
+            height: '100%',
+            zIndex: 10,
+            touchAction: 'none',
+            pointerEvents: readOnly ? 'none' : 'auto',
+            cursor: readOnly
+              ? 'default'
+              : tool === 'eraser'
+              ? 'crosshair'
+              : tool === 'highlighter'
+              ? 'cell'
+              : 'crosshair',
+          }}
+        />
+      </div>
     </div>
   );
 }

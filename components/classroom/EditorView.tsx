@@ -269,7 +269,7 @@ export function EditorView({
 
             {role === 'Teacher' && markupMode ? (
               <div style={{ width: '100%' }}>
-                {/* Annotation Canvas with toolbar */}
+                {/* Annotation Canvas enclosing the essay paper */}
                 <AnnotationCanvas
                   key={`teacher-${reviewingStudent.id}-${submission?.id || 'new'}`}
                   initialData={annotations}
@@ -279,34 +279,32 @@ export function EditorView({
                   }}
                   readOnly={false}
                   studentName={reviewingStudent.name}
-                />
-
-                {/* Ruled Notebook Paper showing student's essay underneath the canvas */}
-                <div
-                  style={{
-                    position: 'relative',
-                    minHeight: '400px',
-                    padding: '24px 28px',
-                    fontFamily: "'DM Sans', sans-serif",
-                    fontSize: '16px',
-                    lineHeight: '2.4rem',
-                    color: '#273f3b',
-                    whiteSpace: 'pre-wrap',
-                    background: '#fdfdfb',
-                    backgroundImage:
-                      'repeating-linear-gradient(transparent, transparent 2.3rem, #eaf0e7 2.3rem, #eaf0e7 2.4rem)',
-                    backgroundAttachment: 'local',
-                  }}
                 >
-                  {draft.trim() ? (
-                    draft
-                  ) : (
-                    <div style={{ color: '#88988b', fontStyle: 'italic', paddingTop: '20px' }}>
-                      {reviewingStudent.name} hasn’t submitted an essay yet. You can still use your
-                      Apple Pencil to write guidance or practice prompts on this paper.
-                    </div>
-                  )}
-                </div>
+                  <div
+                    style={{
+                      minHeight: '420px',
+                      padding: '24px 28px',
+                      fontFamily: "'DM Sans', sans-serif",
+                      fontSize: '16px',
+                      lineHeight: '2.4rem',
+                      color: '#273f3b',
+                      whiteSpace: 'pre-wrap',
+                      background: '#fdfdfb',
+                      backgroundImage:
+                        'repeating-linear-gradient(transparent, transparent 2.3rem, #eaf0e7 2.3rem, #eaf0e7 2.4rem)',
+                      backgroundAttachment: 'local',
+                    }}
+                  >
+                    {draft.trim() ? (
+                      draft
+                    ) : (
+                      <div style={{ color: '#88988b', fontStyle: 'italic', paddingTop: '20px' }}>
+                        {reviewingStudent.name} hasn’t submitted an essay yet. You can still use your
+                        Apple Pencil to write guidance or practice prompts on this paper.
+                      </div>
+                    )}
+                  </div>
+                </AnnotationCanvas>
               </div>
             ) : role === 'Student' && submission?.annotations && showStudentMarkup ? (
               <div style={{ width: '100%' }}>
@@ -315,25 +313,25 @@ export function EditorView({
                   initialData={submission.annotations}
                   readOnly={true}
                   studentName={currentStudent.name}
-                />
-                <div
-                  style={{
-                    position: 'relative',
-                    minHeight: '360px',
-                    padding: '24px 28px',
-                    fontFamily: "'DM Sans', sans-serif",
-                    fontSize: '16px',
-                    lineHeight: '2.4rem',
-                    color: '#273f3b',
-                    whiteSpace: 'pre-wrap',
-                    background: '#fdfdfb',
-                    backgroundImage:
-                      'repeating-linear-gradient(transparent, transparent 2.3rem, #eaf0e7 2.3rem, #eaf0e7 2.4rem)',
-                    backgroundAttachment: 'local',
-                  }}
                 >
-                  {draft || 'No text written yet.'}
-                </div>
+                  <div
+                    style={{
+                      minHeight: '380px',
+                      padding: '24px 28px',
+                      fontFamily: "'DM Sans', sans-serif",
+                      fontSize: '16px',
+                      lineHeight: '2.4rem',
+                      color: '#273f3b',
+                      whiteSpace: 'pre-wrap',
+                      background: '#fdfdfb',
+                      backgroundImage:
+                        'repeating-linear-gradient(transparent, transparent 2.3rem, #eaf0e7 2.3rem, #eaf0e7 2.4rem)',
+                      backgroundAttachment: 'local',
+                    }}
+                  >
+                    {draft || 'No text written yet.'}
+                  </div>
+                </AnnotationCanvas>
               </div>
             ) : (
               <textarea
