@@ -2,6 +2,49 @@ import type { AssignmentEntry, MaterialEntry } from './types';
 
 export const INITIAL_ASSIGNMENTS: AssignmentEntry[] = [
   {
+    id: 'a0',
+    kind: 'assignment',
+    title: 'Week 1 Diagnostic: Change one school rule',
+    type: 'Diagnostic essay',
+    due: '2026-11-03',
+    minutes: 30,
+    words: 150,
+    description:
+      'Start with what matters to you! Give your honest opinion and convincing reasons for a school rule change.',
+    instructions:
+      'Spend 10 minutes brainstorming your idea out loud, then 20 minutes writing:\n\nIf you could change one rule in your school, what would it be and why?\n\n• State the rule you want to change clearly in your opening.\n• Give two convincing reasons supported by real-life details or examples.\n• Finish with a strong concluding thought about how school life would improve.',
+    color: 'mint',
+    icon: '🏫',
+    interactive: {
+      type: 'quiz',
+      title: 'Diagnostic Warm-up: Strong Arguments',
+      questions: [
+        {
+          question: 'Which opening sentence makes the strongest argument for an essay?',
+          options: [
+            'I think some school rules are boring and not fun.',
+            'If our school replaced 30 minutes of desk work with outdoor project time, students would become more creative and focused.',
+            'Rules are everywhere and people must follow them.',
+          ],
+          correctIndex: 1,
+          explanation:
+            'A specific, bold statement with clear cause and effect gives your essay a memorable start!',
+        },
+        {
+          question: 'What is the best step to do BEFORE writing your first draft?',
+          options: [
+            'Explain your argument aloud for 3 minutes to test your ideas',
+            'Search for 10 complicated words in a dictionary',
+            'Skip planning and write immediately',
+          ],
+          correctIndex: 0,
+          explanation:
+            'Explaining your ideas aloud first helps your brain organize reasons clearly and naturally.',
+        },
+      ],
+    },
+  },
+  {
     id: 'a1',
     kind: 'assignment',
     title: 'A place that feels like home',

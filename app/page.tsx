@@ -12,6 +12,7 @@ import type {
   FileAttachment,
   Student,
   InteractiveActivity,
+  WritingScorecard,
 } from '../lib/types';
 import {
   isAssignment,
@@ -26,6 +27,7 @@ import { Sidebar } from '../components/classroom/Sidebar';
 import { Header } from '../components/classroom/Header';
 import { HomeView } from '../components/classroom/HomeView';
 import { HomeworkView } from '../components/classroom/HomeworkView';
+import { RoadmapView } from '../components/classroom/RoadmapView';
 import { MaterialsView } from '../components/classroom/MaterialsView';
 import { MessagesView } from '../components/classroom/MessagesView';
 import { EditorView } from '../components/classroom/EditorView';
@@ -53,6 +55,7 @@ export default function App() {
   const [draft, setDraft] = useState<string>('');
   const [files, setFiles] = useState<FileAttachment[]>([]);
   const [feedback, setFeedback] = useState<string>('');
+  const [scorecard, setScorecard] = useState<WritingScorecard | undefined>(undefined);
   const [annotations, setAnnotations] = useState<string>('');
   const [message, setMessage] = useState<string>('');
   const [dirty, setDirty] = useState<boolean>(false);
@@ -217,6 +220,7 @@ export default function App() {
     setDraft(existingSubmission?.text || '');
     setFiles(existingSubmission?.files || []);
     setFeedback(existingSubmission?.feedback || '');
+    setScorecard(existingSubmission?.scorecard);
     setAnnotations(existingSubmission?.annotations || '');
     setDirty(false);
     setPage('Editor');
@@ -230,6 +234,7 @@ export default function App() {
     setDraft(existingSubmission?.text || '');
     setFiles(existingSubmission?.files || []);
     setFeedback(existingSubmission?.feedback || '');
+    setScorecard(existingSubmission?.scorecard);
     setAnnotations(existingSubmission?.annotations || '');
     setDirty(false);
   }
@@ -242,6 +247,7 @@ export default function App() {
       setDraft(existingSubmission?.text || '');
       setFiles(existingSubmission?.files || []);
       setFeedback(existingSubmission?.feedback || '');
+      setScorecard(existingSubmission?.scorecard);
       setAnnotations(existingSubmission?.annotations || '');
       setDirty(false);
     }
@@ -317,6 +323,7 @@ export default function App() {
         files,
         status,
         feedback: existingSubmission?.feedback || '',
+        scorecard: existingSubmission?.scorecard,
         activityScore: existingSubmission?.activityScore,
         updated: new Date().toISOString(),
       };
@@ -356,6 +363,7 @@ export default function App() {
       setDraft('');
       setFiles([]);
       setFeedback('');
+      setScorecard(undefined);
       setAnnotations('');
       setDirty(false);
       setToast(`Submission data for ${targetStudent.name} has been reset.`);
@@ -377,6 +385,7 @@ export default function App() {
         files,
         status: existingSubmission?.status || 'Draft',
         feedback: existingSubmission?.feedback || '',
+        scorecard: existingSubmission?.scorecard,
         activityScore: {
           score,
           total,
@@ -608,6 +617,15 @@ export default function App() {
             />
           )}
 
+          {page === 'Roadmap' && (
+            <RoadmapView
+              role={role}
+              diagnosticAssignment={allAssignments.find((a) => a.id === 'a0') || allAssignments[0]}
+              onOpenAssignment={openAssignment}
+              onNavigate={navigateTo}
+            />
+          )}
+
           {page === 'Messages' && (
             <MessagesView
               role={role}
@@ -663,6 +681,12 @@ export default function App() {
                   ? getSubmission(active.id, reviewingStudent.id)
                   : getSubmission(active.id, selectedStudent.id)
               }
+              scorecard={
+                role === 'Teacher'
+                  ? scorecard
+                  : getSubmission(active.id, selectedStudent.id)?.scorecard
+              }
+              onSaveScorecard={setScorecard}
               feedback={feedback}
               onFeedbackChange={setFeedback}
               onReturnFeedback={() =>
@@ -673,13 +697,14 @@ export default function App() {
                     ...targetSub,
                     feedback,
                     annotations,
+                    scorecard,
                     status: 'Reviewed',
                     updated: new Date().toISOString(),
                   });
                   setToast(
                     annotations
-                      ? `Feedback and Apple Pencil markings returned to ${reviewingStudent.name}.`
-                      : `Feedback saved and returned to ${reviewingStudent.name}.`
+                      ? `Feedback, scorecard & markings returned to ${reviewingStudent.name}.`
+                      : `Feedback & scorecard saved and returned to ${reviewingStudent.name}.`
                   );
                 })
               }

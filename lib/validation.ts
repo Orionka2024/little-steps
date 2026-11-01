@@ -83,6 +83,19 @@ export const MaterialPayloadSchema = z.object({
   localId: z.string().optional(),
 });
 
+export const WritingScorecardSchema = z.object({
+  ideas: z.number().int().min(1).max(5),
+  structure: z.number().int().min(1).max(5),
+  development: z.number().int().min(1).max(5),
+  vocabulary: z.number().int().min(1).max(5),
+  grammar: z.number().int().min(1).max(5),
+  total: z.number().int().min(5).max(25),
+  targetSkills: z.array(z.string()).max(5),
+  interpretation: z.string().optional(),
+  assessedWeek: z.string().optional(),
+  assessedAt: z.string().optional(),
+});
+
 export const SubmissionPayloadSchema = z.object({
   id: z.string().min(1),
   kind: z.literal('submission'),
@@ -95,6 +108,7 @@ export const SubmissionPayloadSchema = z.object({
   feedback: z.string().max(10000).optional().default(''),
   annotations: z.string().max(500000).optional(),
   activityScore: ActivityScoreSchema.optional(),
+  scorecard: WritingScorecardSchema.optional(),
   updated: z.string().optional(),
   localId: z.string().optional(),
 });

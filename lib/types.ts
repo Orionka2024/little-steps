@@ -111,6 +111,19 @@ export interface AnnotationStroke {
   points: AnnotationPoint[];
 }
 
+export interface WritingScorecard {
+  ideas: number;
+  structure: number;
+  development: number;
+  vocabulary: number;
+  grammar: number;
+  total: number;
+  targetSkills: string[];
+  interpretation?: string;
+  assessedWeek?: string;
+  assessedAt?: string;
+}
+
 export interface SubmissionEntry {
   id: string;
   kind: 'submission';
@@ -123,6 +136,7 @@ export interface SubmissionEntry {
   feedback?: string;
   annotations?: string;
   activityScore?: ActivityScore;
+  scorecard?: WritingScorecard;
   updated?: string;
   localId?: string;
 }

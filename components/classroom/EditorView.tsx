@@ -18,10 +18,12 @@ import type {
   SubmissionEntry,
   Role,
   Student,
+  WritingScorecard,
 } from '../../lib/types';
 import { STUDENTS } from '../../lib/types';
 import { InteractiveActivityContainer } from './interactive/InteractiveActivityContainer';
 import { AnnotationCanvas } from './AnnotationCanvas';
+import { ScorecardWidget } from './ScorecardWidget';
 
 interface EditorViewProps {
   role: Role;
@@ -40,6 +42,8 @@ interface EditorViewProps {
   onResetSubmission?: () => void;
   onSaveAnnotations?: (annotations: string) => void;
   submission?: SubmissionEntry;
+  scorecard?: WritingScorecard;
+  onSaveScorecard?: (card: WritingScorecard) => void;
   feedback: string;
   onFeedbackChange: (text: string) => void;
   onReturnFeedback: () => void;
@@ -68,6 +72,8 @@ export function EditorView({
   onResetSubmission,
   onSaveAnnotations,
   submission,
+  scorecard,
+  onSaveScorecard,
   feedback,
   onFeedbackChange,
   onReturnFeedback,
@@ -504,6 +510,17 @@ export function EditorView({
               Open the writing guide <ChevronRight size={16} />
             </button>
           </div>
+
+          <ScorecardWidget
+            role={role}
+            student={role === 'Teacher' ? reviewingStudent : currentStudent}
+            scorecard={scorecard ?? submission?.scorecard}
+            onSaveScorecard={onSaveScorecard}
+            onInsertToFeedback={(reportText) => {
+              onFeedbackChange(feedback ? `${feedback}\n\n${reportText}` : reportText);
+            }}
+            disabled={busy || !loaded}
+          />
 
           <div className="feedback-box">
             <h3>Teacher feedback</h3>

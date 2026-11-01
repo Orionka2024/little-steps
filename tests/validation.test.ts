@@ -115,9 +115,23 @@ test('SubmissionPayloadSchema handles draft, student attribution, and edutainmen
       total: 3,
       completedAt: new Date().toISOString(),
     },
+    scorecard: {
+      ideas: 3,
+      structure: 3,
+      development: 3,
+      vocabulary: 3,
+      grammar: 3,
+      total: 15,
+      targetSkills: ['Ideas and originality', 'Structure and organisation'],
+      interpretation: 'Developing: identify two skills for targeted improvement.',
+      assessedWeek: 'Week 1',
+      assessedAt: new Date().toISOString(),
+    },
   };
   const parsed = SubmissionPayloadSchema.safeParse(validSubmission);
   assert.ok(parsed.success);
+  assert.strictEqual(parsed.data.scorecard?.total, 15);
+  assert.strictEqual(parsed.data.scorecard?.targetSkills.length, 2);
 });
 
 test('MessagePayloadSchema validates student and teacher chat', () => {
