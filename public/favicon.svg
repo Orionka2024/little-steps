@@ -1,6 +1,96 @@
-<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-<path d="M22 19.2727C22 20.779 20.779 22 19.2727 22H14.7273C13.221 22 12 20.779 12 19.2727V12H19.2727C20.779 12 22 13.221 22 14.7273V19.2727Z" fill="#68C4FF"/>
-<path d="M20 2C21.1046 2 22 2.89543 22 4V7C22 8.10457 21.1046 9 20 9H17C15.8954 9 15 8.10457 15 7V4C15 2.89543 15.8954 2 17 2H20Z" fill="#0C79D8"/>
-<path d="M7 15C8.10457 15 9 15.8954 9 17V20C9 21.1046 8.10457 22 7 22H4C2.89543 22 2 21.1046 2 20V17C2 15.8954 2.89543 15 4 15H7Z" fill="#0C79D8"/>
-<path d="M12 12H4.72727C3.22104 12 2 10.779 2 9.27273V4.72727C2 3.22104 3.22104 2 4.72727 2H9.27273C10.779 2 12 3.22104 12 4.72727V12Z" fill="#2E9EFF"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <defs>
+    <!-- Soft Apple Contact Shadow -->
+    <filter id="macShadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="26" stdDeviation="24" flood-color="#071b15" flood-opacity="0.32" />
+      <feDropShadow dx="0" dy="8" stdDeviation="10" flood-color="#071b15" flood-opacity="0.18" />
+    </filter>
+
+    <!-- Subtle Glyph In-Card Drop Shadow -->
+    <filter id="glyphShadow" x="-15%" y="-15%" width="130%" height="130%">
+      <feDropShadow dx="0" dy="7" stdDeviation="8" flood-color="#071b15" flood-opacity="0.28" />
+    </filter>
+
+    <!-- Brand Green Gradient -->
+    <linearGradient id="brandBg" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#317965" />
+      <stop offset="50%" stop-color="#286959" />
+      <stop offset="100%" stop-color="#1d5043" />
+    </linearGradient>
+
+    <!-- Specular Rim Gradient for Desktop Polish -->
+    <linearGradient id="specularRim" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.30" />
+      <stop offset="40%" stop-color="#ffffff" stop-opacity="0.10" />
+      <stop offset="100%" stop-color="#ffffff" stop-opacity="0.04" />
+    </linearGradient>
+
+    <!-- Top Soft Ambient Lighting Glow -->
+    <radialGradient id="topGlow" cx="50%" cy="0%" r="70%">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.18" />
+      <stop offset="60%" stop-color="#ffffff" stop-opacity="0.0" />
+    </radialGradient>
+  </defs>
+
+  <g filter="url(#macShadow)" >
+    <!-- Background Squircle (Apple continuous corner 824x824) -->
+    <rect
+      x="100"
+      y="100"
+      width="824"
+      height="824"
+      rx="192"
+      ry="192"
+      fill="url(#brandBg)"
+    />
+
+    <!-- Ambient Top Glow -->
+    <rect
+      x="100"
+      y="100"
+      width="824"
+      height="824"
+      rx="192"
+      ry="192"
+      fill="url(#topGlow)"
+    />
+
+    <!-- Inner Edge Bevel -->
+    <rect
+      x="101.5"
+      y="101.5"
+      width="821"
+      height="821"
+      rx="190.5"
+      ry="190.5"
+      fill="none"
+      stroke="url(#specularRim)"
+      stroke-width="3"
+    />
+
+    <!-- Center Notebook & Pen Glyph -->
+    <!-- Centered around 512, 512. Lucide base is 24x24. Scaling by 23.5 gives ~564px height -->
+    <g
+      filter="url(#glyphShadow)"
+      transform="translate(230, 225) scale(23.5)"
+      fill="none"
+      stroke="#ffffff"
+      stroke-width="1.6"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+    >
+      <!-- 4 Spiral Rings extending from left spine -->
+      <path d="M2.4 6h3.6" />
+      <path d="M2.4 10h3.6" />
+      <path d="M2.4 14h3.6" />
+      <path d="M2.4 18h3.6" />
+
+      <!-- Notebook Contour: top left to gap, then right wall down and around to spine -->
+      <path d="M12.8 2.2H6a2.2 2.2 0 0 0-2.2 2.2v15.2a2.2 2.2 0 0 0 2.2 2.2h12a2.2 2.2 0 0 0 2.2-2.2v-7.2" />
+
+      <!-- Hollow Pencil pointing to the page -->
+      <!-- Adjusted control points so the hollow body has clean negative space -->
+      <path d="M21.38 5.63a1.4 1.4 0 0 0-3-3l-5.01 5.01a2.2 2.2 0 0 0-.5.85l-.84 2.87a.55.55 0 0 0 .62.62l2.87-.84a2.2 2.2 0 0 0 .85-.5z" />
+    </g>
+  </g>
 </svg>
