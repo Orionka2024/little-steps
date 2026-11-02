@@ -10,14 +10,14 @@ export interface ClassroomUser {
 export const CLASSROOM_USERS: ClassroomUser[] = [
   {
     username: 'teacher',
-    password: 'teacherpassword123',
+    password: 'MentorSteps!48',
     displayName: 'Teacher',
     role: 'Teacher',
     avatar: 'T',
   },
   {
     username: 'hajun',
-    password: 'hajunpassword123',
+    password: 'TigerBlue!73',
     displayName: 'Hajun',
     role: 'Student',
     studentId: 'hajun',
@@ -25,7 +25,7 @@ export const CLASSROOM_USERS: ClassroomUser[] = [
   },
   {
     username: 'mark',
-    password: 'markpassword123',
+    password: 'GalaxyQuest84',
     displayName: 'Mark',
     role: 'Student',
     studentId: 'mark',
@@ -33,7 +33,7 @@ export const CLASSROOM_USERS: ClassroomUser[] = [
   },
   {
     username: 'juwon',
-    password: 'juwonpassword123',
+    password: 'SunnyMaple#29',
     displayName: 'Juwon',
     role: 'Student',
     studentId: 'juwon',

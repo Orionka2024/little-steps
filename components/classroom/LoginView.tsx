@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { NotebookPen, Lock, User, ArrowRight, Sparkles } from 'lucide-react';
+import { NotebookPen, Lock, User, ArrowRight, Sparkles, Eye, EyeOff } from 'lucide-react';
 import type { ClassroomUser } from '../../lib/auth-types';
 import { CLASSROOM_USERS } from '../../lib/auth-types';
 
@@ -12,6 +12,7 @@ interface LoginViewProps {
 export function LoginView({ onLoginSuccess }: LoginViewProps) {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -191,7 +192,7 @@ export function LoginView({ onLoginSuccess }: LoginViewProps) {
             >
               <Lock size={16} color="#8a998c" />
               <input
-                type="password"
+                type={showPassword ? 'text' : 'password'}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="Enter password"
@@ -204,6 +205,22 @@ export function LoginView({ onLoginSuccess }: LoginViewProps) {
                   fontSize: '13px',
                 }}
               />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                title={showPassword ? 'Hide password' : 'Show password'}
+                style={{
+                  background: 'none',
+                  border: 0,
+                  padding: '4px',
+                  cursor: 'pointer',
+                  color: '#8a998c',
+                  display: 'flex',
+                  alignItems: 'center',
+                }}
+              >
+                {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+              </button>
             </div>
           </div>
 

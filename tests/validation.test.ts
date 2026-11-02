@@ -347,3 +347,18 @@ test('DeletedAttendancePayloadSchema validates tombstones in EntryPayloadSchema'
   }
 });
 
+test('CLASSROOM_USERS have unique and distinct passwords without shared formula', async () => {
+  const { CLASSROOM_USERS } = await import('../lib/auth-types.ts');
+  const passwords = CLASSROOM_USERS.map((u) => u.password);
+  const uniquePasswords = new Set(passwords);
+
+  // All passwords must be unique
+  assert.strictEqual(uniquePasswords.size, CLASSROOM_USERS.length);
+
+  // None of the passwords should use the generic <username>password123 formula
+  for (const user of CLASSROOM_USERS) {
+    assert.notStrictEqual(user.password, `${user.username}password123`);
+    assert.ok(user.password.length >= 8);
+  }
+});
+
