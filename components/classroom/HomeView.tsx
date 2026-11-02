@@ -179,34 +179,34 @@ export function HomeView({
             </span>
           </div>
 
-          <div
-            style={{
-              marginTop: '16px',
-              background: '#ffffff',
-              border: '1px solid #e1e7dc',
-              borderRadius: '13px',
-              padding: '18px',
-            }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
-              <Compass size={17} color="#286654" />
-              <strong style={{ fontSize: '13px', color: '#273f3b' }}>
-                {role === 'Teacher' ? 'Teacher’s Compass' : 'Competition Roadmap'}
-              </strong>
-            </div>
-            <p style={{ fontSize: '11px', color: '#68776f', margin: '0 0 10px', lineHeight: 1.5 }}>
-              {role === 'Teacher'
-                ? 'Explore the 16-week timeline, 6 competition tips, and curated official links.'
-                : 'See your 16-week writing progression and milestones towards competition readiness.'}
-            </p>
-            <button
-              className="text-button"
-              onClick={() => onNavigate('Roadmap')}
-              style={{ fontSize: '11px', fontWeight: 600 }}
+          {role === 'Teacher' && (
+            <div
+              style={{
+                marginTop: '16px',
+                background: '#ffffff',
+                border: '1px solid #e1e7dc',
+                borderRadius: '13px',
+                padding: '18px',
+              }}
             >
-              Open roadmap & tips <ChevronRight size={14} />
-            </button>
-          </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
+                <Compass size={17} color="#286654" />
+                <strong style={{ fontSize: '13px', color: '#273f3b' }}>
+                  Teacher’s Compass
+                </strong>
+              </div>
+              <p style={{ fontSize: '11px', color: '#68776f', margin: '0 0 10px', lineHeight: 1.5 }}>
+                Explore the 16-week timeline, 6 competition tips, and curated official links.
+              </p>
+              <button
+                className="text-button"
+                onClick={() => onNavigate('Roadmap')}
+                style={{ fontSize: '11px', fontWeight: 600 }}
+              >
+                Open roadmap & tips <ChevronRight size={14} />
+              </button>
+            </div>
+          )}
         </aside>
       </div>
 

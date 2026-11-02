@@ -338,14 +338,27 @@ export default function App() {
     }
   }
 
+  const effectivePage =
+    role === 'Student' && (page === 'Attendance' || page === 'Roadmap') ? 'Home' : page;
+
   function navigateTo(targetPage: string) {
     if (dirty && !confirm('Leave this draft without saving your latest changes?')) {
+      return;
+    }
+    if (role === 'Student' && (targetPage === 'Attendance' || targetPage === 'Roadmap')) {
       return;
     }
     setDirty(false);
     setPage(targetPage);
     setActive(null);
   }
+
+  const handleRoleChange = (newRole: Role) => {
+    setRole(newRole);
+    if (newRole === 'Student' && (page === 'Attendance' || page === 'Roadmap')) {
+      setPage('Home');
+    }
+  };
 
   async function handleLogout() {
     await fetch('/api/auth/logout', { method: 'POST' });
@@ -810,7 +823,7 @@ export default function App() {
   return (
     <div className="shell">
       <Sidebar
-        page={page}
+        page={effectivePage}
         role={role}
         selectedStudent={selectedStudent}
         totalAssignments={visibleAssignments.length}
@@ -820,9 +833,9 @@ export default function App() {
 
       <div className="main">
         <Header
-          page={page}
+          page={effectivePage}
           role={role}
-          onRoleChange={setRole}
+          onRoleChange={handleRoleChange}
           selectedStudent={selectedStudent}
           onStudentChange={handleStudentChange}
           onLogout={handleLogout}
@@ -833,7 +846,7 @@ export default function App() {
 
           {!loaded && !error && <div className="notice">Loading your saved classroom…</div>}
 
-          {page === 'Home' && (
+          {effectivePage === 'Home' && (
             <HomeView
               role={role}
               currentStudent={selectedStudent}
@@ -852,7 +865,7 @@ export default function App() {
             />
           )}
 
-          {page === 'Homework' && (
+          {effectivePage === 'Homework' && (
             <HomeworkView
               role={role}
               assignments={allAssignments}
@@ -866,7 +879,7 @@ export default function App() {
             />
           )}
 
-          {page === 'Materials' && (
+          {effectivePage === 'Materials' && (
             <MaterialsView
               role={role}
               resources={allMaterials}
@@ -880,7 +893,7 @@ export default function App() {
             />
           )}
 
-          {page === 'Attendance' && (
+          {effectivePage === 'Attendance' && role === 'Teacher' && (
             <AttendanceView
               role={role}
               currentStudent={selectedStudent}
@@ -893,7 +906,7 @@ export default function App() {
             />
           )}
 
-          {page === 'Roadmap' && (
+          {effectivePage === 'Roadmap' && role === 'Teacher' && (
             <RoadmapView
               role={role}
               diagnosticAssignment={
@@ -906,7 +919,7 @@ export default function App() {
             />
           )}
 
-          {page === 'Messages' && (
+          {effectivePage === 'Messages' && (
             <MessagesView
               role={role}
               currentStudent={selectedStudent}
@@ -919,7 +932,7 @@ export default function App() {
             />
           )}
 
-          {page === 'Editor' && active && (
+          {effectivePage === 'Editor' && active && (
             <EditorView
               role={role}
               assignment={active}

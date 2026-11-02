@@ -30,14 +30,16 @@ export function Sidebar({
 }: SidebarProps) {
   const pendingCount = totalAssignments - completedAssignments;
 
-  const navItems = [
-    { name: 'Home', icon: Home },
-    { name: 'Homework', icon: NotebookPen },
-    { name: 'Attendance', icon: CalendarCheck },
-    { name: 'Roadmap', icon: Compass },
-    { name: 'Materials', icon: FolderOpen },
-    { name: 'Messages', icon: MessageCircle },
+  const allNavItems = [
+    { name: 'Home', icon: Home, teacherOnly: false },
+    { name: 'Homework', icon: NotebookPen, teacherOnly: false },
+    { name: 'Attendance', icon: CalendarCheck, teacherOnly: true },
+    { name: 'Roadmap', icon: Compass, teacherOnly: true },
+    { name: 'Materials', icon: FolderOpen, teacherOnly: false },
+    { name: 'Messages', icon: MessageCircle, teacherOnly: false },
   ] as const;
+
+  const navItems = allNavItems.filter((item) => !item.teacherOnly || role === 'Teacher');
 
 
   return (
