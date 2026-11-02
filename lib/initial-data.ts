@@ -279,24 +279,24 @@ A good writer revises. Small changes make a big difference!`,
 export const INITIAL_BILLING_CONFIG: BillingConfigEntry = {
   id: 'billing_global',
   kind: 'billing_config',
-  defaultRate: 40,
-  currency: '$',
+  defaultRate: 250,
+  currency: 'CZK',
   profiles: {
     hajun: {
       studentId: 'hajun',
-      ratePerLesson: 40,
+      ratePerLesson: 250,
       paidLessonsCount: 3,
       notes: 'Paid through Oct 26',
     },
     mark: {
       studentId: 'mark',
-      ratePerLesson: 40,
+      ratePerLesson: 250,
       paidLessonsCount: 4,
       notes: 'Paid through Nov 2',
     },
     juwon: {
       studentId: 'juwon',
-      ratePerLesson: 40,
+      ratePerLesson: 250,
       paidLessonsCount: 2,
       notes: 'Paid for Oct 12 & Oct 26',
     },
@@ -310,7 +310,7 @@ export const INITIAL_ATTENDANCE: AttendanceEntry[] = [
     date: '2026-10-12',
     topic: 'Lesson 1: Diagnostic Essay & Brainstorming Out Loud',
     durationMinutes: 60,
-    ratePerLesson: 40,
+    ratePerLesson: 250,
     notes: 'Introduced the 16-week writing roadmap and out-loud brainstorming.',
     records: [
       {
@@ -342,7 +342,7 @@ export const INITIAL_ATTENDANCE: AttendanceEntry[] = [
     date: '2026-10-19',
     topic: 'Lesson 2: Sensory Hooks & Showing vs Telling',
     durationMinutes: 60,
-    ratePerLesson: 40,
+    ratePerLesson: 250,
     notes: 'Practiced 5-senses descriptive language for setting scenes.',
     records: [
       {
@@ -374,7 +374,7 @@ export const INITIAL_ATTENDANCE: AttendanceEntry[] = [
     date: '2026-10-26',
     topic: 'Lesson 3: Connecting Words & Paragraph Flow',
     durationMinutes: 60,
-    ratePerLesson: 40,
+    ratePerLesson: 250,
     notes: 'Transition words mastery and sentence rhythm.',
     records: [
       {
@@ -405,7 +405,7 @@ export const INITIAL_ATTENDANCE: AttendanceEntry[] = [
     date: '2026-11-02',
     topic: 'Lesson 4: Narrative Tension & 3D Flashcards Review',
     durationMinutes: 60,
-    ratePerLesson: 40,
+    ratePerLesson: 250,
     notes: 'Reviewed vocabulary with interactive cards and practiced building suspense.',
     records: [
       {

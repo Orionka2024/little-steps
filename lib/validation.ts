@@ -171,8 +171,8 @@ export const StudentBillingProfileSchema = z.object({
 export const BillingConfigPayloadSchema = z.object({
   id: z.string().min(1),
   kind: z.literal('billing_config'),
-  defaultRate: z.number().positive().default(40),
-  currency: z.string().min(1).max(10).default('$'),
+  defaultRate: z.number().positive().default(250),
+  currency: z.string().min(1).max(10).default('CZK'),
   profiles: z.record(StudentBillingProfileSchema).default({}),
   localId: z.string().optional(),
 });

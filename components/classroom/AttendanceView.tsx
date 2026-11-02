@@ -36,6 +36,14 @@ interface AttendanceViewProps {
   busy?: boolean;
 }
 
+export function formatMoney(amount: number, currency: string) {
+  const formatted = amount.toLocaleString();
+  if (['CZK', 'Kč', 'zł', 'kr'].includes(currency)) {
+    return `${formatted} ${currency}`;
+  }
+  return `${currency}${formatted}`;
+}
+
 export function AttendanceView({
   role,
   currentStudent,
@@ -66,18 +74,19 @@ export function AttendanceView({
   });
 
   // Billing settings state
-  const [defaultRate, setDefaultRate] = useState<number>(billingConfig.defaultRate || 40);
-  const [currency, setCurrency] = useState<string>(billingConfig.currency || '$');
+  const [defaultRate, setDefaultRate] = useState<number>(billingConfig.defaultRate || 250);
+  const [currency, setCurrency] = useState<string>(billingConfig.currency || 'CZK');
   const [studentRates, setStudentRates] = useState<Record<string, number>>(() => {
     const rates: Record<string, number> = {};
     for (const s of STUDENTS) {
-      rates[s.id] = billingConfig.profiles[s.id]?.ratePerLesson ?? billingConfig.defaultRate ?? 40;
+      rates[s.id] = billingConfig.profiles[s.id]?.ratePerLesson ?? billingConfig.defaultRate ?? 250;
     }
     return rates;
   });
   const [paidCounts, setPaidCounts] = useState<Record<string, number>>(() => {
     const counts: Record<string, number> = {};
     for (const s of STUDENTS) {
+
       counts[s.id] = billingConfig.profiles[s.id]?.paidLessonsCount ?? 0;
     }
     return counts;
@@ -348,7 +357,7 @@ export function AttendanceView({
     const sessionLines = m.sessions
       .map((s) => {
         const statusLabel = s.status === 'present' ? 'Attended' : s.status === 'late' ? 'Attended (Late)' : 'Absent';
-        const fee = s.chargeable ? `${sym}${m.rate}` : `${sym}0 (Excused)`;
+        const fee = s.chargeable ? formatMoney(m.rate, sym) : `${formatMoney(0, sym)} (Excused)`;
         return `  • ${s.date}: ${s.topic} [${statusLabel} · ${fee}]${s.note ? ` (${s.note})` : ''}`;
       })
       .join('\n');
@@ -359,17 +368,18 @@ Lesson Attendance & Billing Statement
 Student: ${student.name}
 Total Lessons Conducted: ${m.totalLessons}
 Lessons Attended: ${m.attended + m.late} (${m.attendanceRate}% attendance)
-Chargeable Lessons: ${m.chargeable} @ ${sym}${m.rate}/lesson
+Chargeable Lessons: ${m.chargeable} @ ${formatMoney(m.rate, sym)}/lesson
 
 Session Breakdown:
 ${sessionLines || '  • No recorded sessions yet.'}
 
 ──────────────────────────────────
-Total Amount Incurred: ${sym}${m.totalCharged}
-Total Lessons Paid:    ${m.paidLessons} (${sym}${m.amountPaid})
-Outstanding Balance:   ${sym}${m.balanceDue} (${m.unpaidLessons} unpaid ${m.unpaidLessons === 1 ? 'lesson' : 'lessons'})
+Total Amount Incurred: ${formatMoney(m.totalCharged, sym)}
+Total Lessons Paid:    ${m.paidLessons} (${formatMoney(m.amountPaid, sym)})
+Outstanding Balance:   ${formatMoney(m.balanceDue, sym)} (${m.unpaidLessons} unpaid ${m.unpaidLessons === 1 ? 'lesson' : 'lessons'})
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 Thank you for learning with Little Steps! ✨`;
+
 
     navigator.clipboard.writeText(invoiceText).then(() => {
       setCopiedStudentId(student.id);
@@ -425,12 +435,12 @@ Thank you for learning with Little Steps! ✨`;
             <button
               className="text-button"
               onClick={() => {
-                setDefaultRate(billingConfig.defaultRate || 40);
-                setCurrency(billingConfig.currency || '$');
+                setDefaultRate(billingConfig.defaultRate || 250);
+                setCurrency(billingConfig.currency || 'CZK');
                 const rates: Record<string, number> = {};
                 const counts: Record<string, number> = {};
                 for (const s of STUDENTS) {
-                  rates[s.id] = billingConfig.profiles[s.id]?.ratePerLesson ?? billingConfig.defaultRate ?? 40;
+                  rates[s.id] = billingConfig.profiles[s.id]?.ratePerLesson ?? billingConfig.defaultRate ?? 250;
                   counts[s.id] = billingConfig.profiles[s.id]?.paidLessonsCount ?? 0;
                 }
                 setStudentRates(rates);
@@ -449,7 +459,7 @@ Thank you for learning with Little Steps! ✨`;
               }}
             >
               <CreditCard size={15} />
-              Rates & Currency ({billingConfig.currency}{billingConfig.defaultRate}/lesson)
+              Rates & Currency ({formatMoney(billingConfig.defaultRate, billingConfig.currency)}/student)
             </button>
 
             <button
@@ -508,10 +518,10 @@ Thank you for learning with Little Steps! ✨`;
               Total Fees Accrued
             </div>
             <div style={{ fontSize: '30px', fontWeight: 800, color: '#273f3b', margin: '4px 0 2px', fontFamily: 'Manrope, sans-serif' }}>
-              {billingConfig.currency}{classroomTotals.totalRevenue}
+              {formatMoney(classroomTotals.totalRevenue, billingConfig.currency)}
             </div>
             <div style={{ fontSize: '11px', color: '#628a68' }}>
-              {billingConfig.currency}{classroomTotals.totalPaid} paid to date
+              {formatMoney(classroomTotals.totalPaid, billingConfig.currency)} paid to date
             </div>
           </div>
 
@@ -527,7 +537,7 @@ Thank you for learning with Little Steps! ✨`;
               {classroomTotals.totalBalance > 0 ? '✦ OUTSTANDING BALANCE' : '✓ ALL PAYMENTS CURRENT'}
             </div>
             <div style={{ fontSize: '24px', fontWeight: 800, color: classroomTotals.totalBalance > 0 ? '#926a27' : '#286654', margin: '3px 0' }}>
-              {billingConfig.currency}{classroomTotals.totalBalance}
+              {formatMoney(classroomTotals.totalBalance, billingConfig.currency)}
             </div>
             <div style={{ fontSize: '11px', color: '#7a8677' }}>
               {classroomTotals.totalBalance > 0
@@ -588,7 +598,7 @@ Thank you for learning with Little Steps! ✨`;
                     <div>
                       <h3 style={{ fontSize: '16px', fontWeight: 700, margin: 0 }}>{student.name}</h3>
                       <small style={{ color: '#7a8c79' }}>
-                        Rate: {sym}{m.rate} / lesson
+                        Rate: {formatMoney(m.rate, sym)} / lesson
                       </small>
                     </div>
                   </div>
@@ -611,12 +621,12 @@ Thank you for learning with Little Steps! ✨`;
                     {m.balanceDue > 0 ? (
                       <>
                         <Clock size={12} />
-                        To Charge: {sym}{m.balanceDue} ({m.unpaidLessons} {m.unpaidLessons === 1 ? 'lesson' : 'lessons'})
+                        To Charge: {formatMoney(m.balanceDue, sym)} ({m.unpaidLessons} {m.unpaidLessons === 1 ? 'lesson' : 'lessons'})
                       </>
                     ) : (
                       <>
                         <CheckCircle2 size={12} />
-                        All Paid ({sym}{m.totalCharged})
+                        All Paid ({formatMoney(m.totalCharged, sym)})
                       </>
                     )}
                   </div>
@@ -650,7 +660,7 @@ Thank you for learning with Little Steps! ✨`;
                       {m.chargeable}{' '}
                       <span style={{ fontSize: '11px', fontWeight: 400, color: '#889886' }}>lessons</span>
                     </div>
-                    <div style={{ fontSize: '10px', color: '#7a8e7a' }}>{sym}{m.totalCharged} fee</div>
+                    <div style={{ fontSize: '10px', color: '#7a8e7a' }}>{formatMoney(m.totalCharged, sym)} fee</div>
                   </div>
 
                   <div>
@@ -659,7 +669,7 @@ Thank you for learning with Little Steps! ✨`;
                       {m.paidLessons}{' '}
                       <span style={{ fontSize: '11px', fontWeight: 400, color: '#889886' }}>lessons</span>
                     </div>
-                    <div style={{ fontSize: '10px', color: '#688c66' }}>{sym}{m.amountPaid} credited</div>
+                    <div style={{ fontSize: '10px', color: '#688c66' }}>{formatMoney(m.amountPaid, sym)} credited</div>
                   </div>
                 </div>
 
@@ -930,7 +940,7 @@ Thank you for learning with Little Steps! ✨`;
                       const isLate = rec.status === 'late';
 
                       const sym = billingConfig.currency;
-                      const rate = billingConfig.profiles[rec.studentId]?.ratePerLesson ?? billingConfig.defaultRate ?? 40;
+                      const rate = billingConfig.profiles[rec.studentId]?.ratePerLesson ?? billingConfig.defaultRate ?? 250;
 
                       return (
                         <div
@@ -969,9 +979,9 @@ Thank you for learning with Little Steps! ✨`;
 
                             <div style={{ fontSize: '10px', color: '#687765' }}>
                               {rec.chargeable ? (
-                                <span style={{ color: '#286654', fontWeight: 600 }}>Chargeable ({sym}{rate})</span>
+                                <span style={{ color: '#286654', fontWeight: 600 }}>Chargeable ({formatMoney(rate, sym)})</span>
                               ) : (
-                                <span style={{ color: '#889886' }}>Uncharged ($0)</span>
+                                <span style={{ color: '#889886' }}>Uncharged ({formatMoney(0, sym)})</span>
                               )}
                               {rec.note ? ` · ${rec.note}` : ''}
                             </div>
@@ -1227,7 +1237,7 @@ Thank you for learning with Little Steps! ✨`;
                               }}
                               style={{ width: 'auto', margin: 0 }}
                             />
-                            Charge for lesson ({billingConfig.currency}{billingConfig.profiles[student.id]?.ratePerLesson ?? billingConfig.defaultRate ?? 40})
+                            Charge for lesson ({formatMoney(billingConfig.profiles[student.id]?.ratePerLesson ?? billingConfig.defaultRate ?? 250, billingConfig.currency)})
                           </label>
 
                           <input
@@ -1338,10 +1348,12 @@ Thank you for learning with Little Steps! ✨`;
                       fontSize: '13px',
                     }}
                   >
+                    <option value="CZK">CZK (Czech koruna)</option>
+                    <option value="Kč">Kč (Czech koruna)</option>
                     <option value="$">$ (USD / CAD / AUD)</option>
-                    <option value="₩">₩ (KRW)</option>
                     <option value="€">€ (EUR)</option>
                     <option value="£">£ (GBP)</option>
+                    <option value="₩">₩ (KRW)</option>
                     <option value="¥">¥ (JPY / CNY)</option>
                   </select>
                 </div>
@@ -1355,7 +1367,7 @@ Thank you for learning with Little Steps! ✨`;
                     min={1}
                     required
                     value={defaultRate}
-                    onChange={(e) => setDefaultRate(parseFloat(e.target.value) || 40)}
+                    onChange={(e) => setDefaultRate(parseFloat(e.target.value) || 250)}
                     style={{
                       width: '100%',
                       padding: '9px 12px',
