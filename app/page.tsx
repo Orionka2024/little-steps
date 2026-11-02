@@ -52,12 +52,33 @@ import { ResourceModal, CreateModal } from '../components/classroom/Modals';
 import { Toast } from '../components/classroom/Toast';
 import { LoginView } from '../components/classroom/LoginView';
 
+function getInitialUserSession(): ClassroomUser | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const cached = localStorage.getItem('classroom_user_session');
+    if (cached) {
+      const parsed = JSON.parse(cached) as ClassroomUser;
+      if (parsed && parsed.username) return parsed;
+    }
+  } catch {
+    // ignore
+  }
+  return null;
+}
+
 export default function App() {
-  const [currentUser, setCurrentUser] = useState<ClassroomUser | null>(null);
-  const [checkingAuth, setCheckingAuth] = useState<boolean>(true);
+  const [currentUser, setCurrentUser] = useState<ClassroomUser | null>(getInitialUserSession);
+  const [checkingAuth, setCheckingAuth] = useState<boolean>(() => !getInitialUserSession());
   const [page, setPage] = useState<string>('Home');
-  const [role, setRole] = useState<Role>('Student');
-  const [selectedStudent, setSelectedStudent] = useState<Student>(STUDENTS[0]); // Default to Hajun
+  const [role, setRole] = useState<Role>(() => getInitialUserSession()?.role || 'Student');
+  const [selectedStudent, setSelectedStudent] = useState<Student>(() => {
+    const initialUser = getInitialUserSession();
+    if (initialUser?.role === 'Student' && initialUser.studentId) {
+      const matched = STUDENTS.find((s) => s.id === initialUser.studentId);
+      if (matched) return matched;
+    }
+    return STUDENTS[0];
+  });
   const [reviewingStudent, setReviewingStudent] = useState<Student>(STUDENTS[0]); // Default to Hajun
   const [rows, setRows] = useState<Entry[]>([]);
   const [active, setActive] = useState<AssignmentEntry | null>(null);
@@ -90,7 +111,7 @@ export default function App() {
     }
   }, []);
 
-  // Check existing session on load
+  // Validate / synchronize session with server on load
   useEffect(() => {
     fetch('/api/auth/me')
       .then(async (res) => {
@@ -98,7 +119,15 @@ export default function App() {
           const data = (await res.json()) as { authenticated: boolean; user?: ClassroomUser };
           if (data.authenticated && data.user) {
             applyUserSession(data.user);
+            try {
+              localStorage.setItem('classroom_user_session', JSON.stringify(data.user));
+            } catch {}
           }
+        } else if (res.status === 401) {
+          try {
+            localStorage.removeItem('classroom_user_session');
+          } catch {}
+          setCurrentUser(null);
         }
       })
       .finally(() => setCheckingAuth(false));
@@ -366,6 +395,11 @@ export default function App() {
   };
 
   async function handleLogout() {
+    try {
+      localStorage.removeItem('classroom_user_session');
+    } catch {
+      // ignore
+    }
     await fetch('/api/auth/logout', { method: 'POST' });
     setCurrentUser(null);
     setPage('Home');

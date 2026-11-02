@@ -22,12 +22,14 @@ export async function POST(req: Request) {
     }
 
     const cookieStore = await cookies();
+    const ONE_YEAR_SECONDS = 60 * 60 * 24 * 365;
     cookieStore.set(AUTH_COOKIE_NAME, user.username, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
       path: '/',
-      maxAge: 60 * 60 * 24 * 7, // 7 days
+      maxAge: ONE_YEAR_SECONDS,
+      expires: new Date(Date.now() + ONE_YEAR_SECONDS * 1000),
     });
 
     return Response.json({

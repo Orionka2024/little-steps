@@ -105,7 +105,7 @@ export function Sidebar({
             {role === 'Teacher'
               ? 'Classroom: Hajun, Mark, Juwon'
               : currentUser?.role === 'Student'
-              ? 'Essay explorers · Ages 10–11'
+              ? 'Essay explorers'
               : 'Reviewing student experience'}
           </small>
         </div>

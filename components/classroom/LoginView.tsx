@@ -45,6 +45,12 @@ export function LoginView({ onLoginSuccess }: LoginViewProps) {
         throw new Error(data.error || 'Invalid credentials');
       }
 
+      try {
+        localStorage.setItem('classroom_user_session', JSON.stringify(data.user));
+      } catch {
+        // ignore localStorage errors (e.g. incognito quota)
+      }
+
       onLoginSuccess(data.user);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Login failed';
