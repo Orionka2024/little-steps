@@ -17,7 +17,7 @@ export const CLASSROOM_USERS: ClassroomUser[] = [
   },
   {
     username: 'hajun',
-    password: 'TigerBlue!73',
+    password: 'Hjn2015',
     displayName: 'Hajun',
     role: 'Student',
     studentId: 'hajun',
@@ -25,7 +25,7 @@ export const CLASSROOM_USERS: ClassroomUser[] = [
   },
   {
     username: 'mark',
-    password: 'GalaxyQuest84',
+    password: 'Mrk1004',
     displayName: 'Mark',
     role: 'Student',
     studentId: 'mark',
@@ -33,7 +33,7 @@ export const CLASSROOM_USERS: ClassroomUser[] = [
   },
   {
     username: 'juwon',
-    password: 'SunnyMaple#29',
+    password: 'Jwn1122',
     displayName: 'Juwon',
     role: 'Student',
     studentId: 'juwon',
