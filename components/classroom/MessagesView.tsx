@@ -26,7 +26,12 @@ export function MessagesView({
   loaded,
 }: MessagesViewProps) {
   const sortedMessages = [...messages].sort((a, b) => a.time.localeCompare(b.time));
-  const activeSenderName = role === 'Student' ? currentStudent.name : 'Teacher';
+  const activeSenderName =
+    role === 'Student'
+      ? currentStudent.id === 'preview'
+        ? 'Student'
+        : currentStudent.name
+      : 'Teacher';
 
   return (
     <>
@@ -87,7 +92,9 @@ export function MessagesView({
             onChange={(e) => onMessageTextChange(e.target.value)}
             placeholder={
               role === 'Student'
-                ? `Write as ${currentStudent.name}…`
+                ? currentStudent.id === 'preview'
+                  ? 'Write a message as Student…'
+                  : `Write as ${currentStudent.name}…`
                 : 'Write a question or encouraging feedback as Teacher…'
             }
           />

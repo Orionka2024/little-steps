@@ -30,6 +30,7 @@ import {
   isBillingConfig,
   isDeletedAttendance,
   STUDENTS,
+  PREVIEW_STUDENT,
 } from '../lib/types';
 import type { ClassroomUser } from '../lib/auth-types';
 import {
@@ -75,6 +76,10 @@ export default function App() {
   const [annotations, setAnnotations] = useState<string>('');
   const [message, setMessage] = useState<string>('');
   const [dirty, setDirty] = useState<boolean>(false);
+
+  const isTeacherReviewing =
+    role === 'Student' && (currentUser?.role === 'Teacher' || !currentUser?.studentId);
+  const activeStudent = isTeacherReviewing ? PREVIEW_STUDENT : selectedStudent;
 
   const applyUserSession = useCallback((user: ClassroomUser) => {
     setCurrentUser(user);
@@ -232,9 +237,9 @@ export default function App() {
   // Status for the active student in student mode
   const getHomeworkStatus = useCallback(
     (assignment: AssignmentEntry): HomeworkStatus => {
-      return getSubmission(assignment.id, selectedStudent.id)?.status || 'To do';
+      return getSubmission(assignment.id, activeStudent.id)?.status || 'To do';
     },
-    [getSubmission, selectedStudent.id]
+    [getSubmission, activeStudent.id]
   );
 
   const completedCount = useMemo(() => {
@@ -279,7 +284,7 @@ export default function App() {
       return;
     }
     setActive(assignment);
-    const targetStudent = role === 'Teacher' ? reviewingStudent : selectedStudent;
+    const targetStudent = role === 'Teacher' ? reviewingStudent : activeStudent;
     const existingSubmission = getSubmission(assignment.id, targetStudent.id);
     setDraft(existingSubmission?.text || '');
     setFiles(existingSubmission?.files || []);
@@ -410,13 +415,13 @@ export default function App() {
     }
 
     await action(async () => {
-      const existingSubmission = getSubmission(active.id, selectedStudent.id);
+      const existingSubmission = getSubmission(active.id, activeStudent.id);
       const submissionRecord: SubmissionEntry = {
-        id: `s-${active.id}-${selectedStudent.id}`,
+        id: `s-${active.id}-${activeStudent.id}`,
         kind: 'submission',
         assignment: active.id,
-        studentId: selectedStudent.id,
-        studentName: selectedStudent.name,
+        studentId: activeStudent.id,
+        studentName: activeStudent.name,
         text: draft,
         files,
         status,
@@ -430,15 +435,19 @@ export default function App() {
       setDirty(false);
       setToast(
         status === 'Handed in'
-          ? `You did it, ${selectedStudent.name}! Your homework is handed in.`
-          : `Draft saved for ${selectedStudent.name}.`
+          ? isTeacherReviewing
+            ? 'Homework handed in in student preview mode.'
+            : `You did it, ${activeStudent.name}! Your homework is handed in.`
+          : isTeacherReviewing
+          ? 'Draft saved in student preview mode.'
+          : `Draft saved for ${activeStudent.name}.`
       );
     });
   }
 
   const handleResetSubmission = () => {
     if (!active) return;
-    const targetStudent = role === 'Teacher' ? reviewingStudent : selectedStudent;
+    const targetStudent = role === 'Teacher' ? reviewingStudent : activeStudent;
     const submissionId = `s-${active.id}-${targetStudent.id}`;
 
     action(async () => {
@@ -472,13 +481,13 @@ export default function App() {
   const handleActivityComplete = (score: number, total: number) => {
     if (!active) return;
     action(async () => {
-      const existingSubmission = getSubmission(active.id, selectedStudent.id);
+      const existingSubmission = getSubmission(active.id, activeStudent.id);
       const submissionRecord: SubmissionEntry = {
-        id: `s-${active.id}-${selectedStudent.id}`,
+        id: `s-${active.id}-${activeStudent.id}`,
         kind: 'submission',
         assignment: active.id,
-        studentId: selectedStudent.id,
-        studentName: selectedStudent.name,
+        studentId: activeStudent.id,
+        studentName: activeStudent.name,
         text: draft,
         files,
         status: existingSubmission?.status || 'Draft',
@@ -502,13 +511,13 @@ export default function App() {
     if (!message.trim()) return;
 
     action(async () => {
-      const senderName = role === 'Student' ? selectedStudent.name : 'Teacher';
+      const senderName = role === 'Student' ? activeStudent.name : 'Teacher';
       const newMsg: MessageEntry = {
         id: crypto.randomUUID(),
         kind: 'message',
         text: message.trim(),
         sender: senderName,
-        studentId: role === 'Student' ? selectedStudent.id : undefined,
+        studentId: role === 'Student' ? activeStudent.id : undefined,
         time: new Date().toISOString(),
       };
 
@@ -825,7 +834,8 @@ export default function App() {
       <Sidebar
         page={effectivePage}
         role={role}
-        selectedStudent={selectedStudent}
+        currentUser={currentUser}
+        selectedStudent={activeStudent}
         totalAssignments={visibleAssignments.length}
         completedAssignments={completedCount}
         onNavigate={navigateTo}
@@ -835,8 +845,9 @@ export default function App() {
         <Header
           page={effectivePage}
           role={role}
+          currentUser={currentUser}
           onRoleChange={handleRoleChange}
-          selectedStudent={selectedStudent}
+          selectedStudent={activeStudent}
           onStudentChange={handleStudentChange}
           onLogout={handleLogout}
         />
@@ -849,7 +860,7 @@ export default function App() {
           {effectivePage === 'Home' && (
             <HomeView
               role={role}
-              currentStudent={selectedStudent}
+              currentStudent={activeStudent}
               assignments={visibleAssignments}
               resources={allMaterials}
               completedCount={completedCount}
@@ -922,7 +933,7 @@ export default function App() {
           {effectivePage === 'Messages' && (
             <MessagesView
               role={role}
-              currentStudent={selectedStudent}
+              currentStudent={activeStudent}
               messages={allMessages}
               messageText={message}
               onMessageTextChange={setMessage}
@@ -936,7 +947,7 @@ export default function App() {
             <EditorView
               role={role}
               assignment={active}
-              currentStudent={selectedStudent}
+              currentStudent={activeStudent}
               reviewingStudent={reviewingStudent}
               onReviewingStudentChange={handleReviewingStudentChange}
               studentSubmissions={activeStudentSubmissions}
@@ -973,12 +984,12 @@ export default function App() {
               submission={
                 role === 'Teacher'
                   ? getSubmission(active.id, reviewingStudent.id)
-                  : getSubmission(active.id, selectedStudent.id)
+                  : getSubmission(active.id, activeStudent.id)
               }
               scorecard={
                 role === 'Teacher'
                   ? scorecard
-                  : getSubmission(active.id, selectedStudent.id)?.scorecard
+                  : getSubmission(active.id, activeStudent.id)?.scorecard
               }
               onSaveScorecard={setScorecard}
               feedback={feedback}
@@ -1023,7 +1034,7 @@ export default function App() {
       {modal === 'resource' && resource && (
         <ResourceModal
           resource={resource}
-          currentStudent={selectedStudent}
+          currentStudent={activeStudent}
           onClose={() => setModal('')}
         />
       )}

@@ -3,25 +3,28 @@
 import React from 'react';
 import { ChevronRight, LogOut } from 'lucide-react';
 import type { Role, Student } from '../../lib/types';
-import { STUDENTS } from '../../lib/types';
+import type { ClassroomUser } from '../../lib/auth-types';
 
 interface HeaderProps {
   page: string;
   role: Role;
+  currentUser?: ClassroomUser | null;
   onRoleChange: (newRole: Role) => void;
   selectedStudent: Student;
-  onStudentChange: (student: Student) => void;
+  onStudentChange?: (student: Student) => void;
   onLogout?: () => void;
 }
 
 export function Header({
   page,
   role,
+  currentUser,
   onRoleChange,
   selectedStudent,
-  onStudentChange,
   onLogout,
 }: HeaderProps) {
+  const isRealStudent = currentUser?.role === 'Student';
+
   return (
     <header>
       <div className="breadcrumb">
@@ -30,37 +33,27 @@ export function Header({
 
       <div className="header-right">
         <span className="private-dot">
-          {role === 'Teacher' ? 'Teacher Workspace' : `Student: ${selectedStudent.name}`}
+          {role === 'Teacher'
+            ? 'Teacher Workspace'
+            : isRealStudent
+            ? `Student: ${currentUser?.displayName || selectedStudent.name}`
+            : 'Student View (Preview)'}
         </span>
 
-        <select
-          aria-label="Preview role"
-          value={role}
-          onChange={(e) => onRoleChange(e.target.value as Role)}
-        >
-          <option value="Student">Student Mode</option>
-          <option value="Teacher">Teacher Mode</option>
-        </select>
-
-        {role === 'Student' && (
+        {!isRealStudent && (
           <select
-            aria-label="Select student"
-            value={selectedStudent.id}
-            onChange={(e) => {
-              const matched = STUDENTS.find((st) => st.id === e.target.value);
-              if (matched) onStudentChange(matched);
-            }}
+            aria-label="Workspace mode"
+            value={role}
+            onChange={(e) => onRoleChange(e.target.value as Role)}
+            style={{ fontWeight: 600 }}
           >
-            {STUDENTS.map((st) => (
-              <option key={st.id} value={st.id}>
-                Student: {st.name}
-              </option>
-            ))}
+            <option value="Teacher">Teacher Mode</option>
+            <option value="Student">Review Student View</option>
           </select>
         )}
 
         <div className="avatar small">
-          {role === 'Student' ? selectedStudent.avatar : 'T'}
+          {role === 'Teacher' ? 'T' : isRealStudent ? (currentUser?.avatar || selectedStudent.avatar) : 'S'}
         </div>
 
         {onLogout && (

@@ -43,13 +43,19 @@ export function HomeView({
       <div className="page-heading">
         <div className="eyebrow">A LITTLE PRACTICE, A LOT OF POSSIBILITY</div>
         <h1>
-          {role === 'Student' ? `Hello, ${currentStudent.name}!` : 'Welcome, teacher!'}{' '}
+          {role === 'Teacher'
+            ? 'Welcome, teacher!'
+            : currentStudent.id === 'preview' || currentStudent.name === 'Student'
+            ? 'Welcome to Student View!'
+            : `Hello, ${currentStudent.name}!`}
           <span className="wave">✦</span>
         </h1>
         <p>
-          {role === 'Student'
-            ? 'Your ideas belong here. Let’s turn them into something wonderful.'
-            : 'Track work from Hajun, Mark, and Juwon, or assign a new writing topic.'}
+          {role === 'Teacher'
+            ? 'Track work from Hajun, Mark, and Juwon, or assign a new writing topic.'
+            : currentStudent.id === 'preview' || currentStudent.name === 'Student'
+            ? 'Review assignments, interactive activities, and club resources as seen by students.'
+            : 'Your ideas belong here. Let’s turn them into something wonderful.'}
         </p>
       </div>
 

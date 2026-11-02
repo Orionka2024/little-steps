@@ -14,6 +14,12 @@ export const STUDENTS: Student[] = [
   { id: 'juwon', name: 'Juwon', avatar: 'J' },
 ];
 
+export const PREVIEW_STUDENT: Student = {
+  id: 'preview',
+  name: 'Student',
+  avatar: 'S',
+};
+
 export interface FileAttachment {
   key: string;
   name: string;

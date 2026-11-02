@@ -255,7 +255,7 @@ export function EditorView({
         <div style={{ marginBottom: '24px' }}>
           <InteractiveActivityContainer
             activity={assignment.interactive}
-            studentName={role === 'Student' ? currentStudent.name : reviewingStudent.name}
+            studentName={role === 'Student' ? (currentStudent.id === 'preview' ? 'Student' : currentStudent.name) : reviewingStudent.name}
             onComplete={role === 'Student' ? onActivityComplete : undefined}
           />
         </div>
@@ -285,13 +285,19 @@ export function EditorView({
                   {assignment.taskType === 'flashcards'
                     ? role === 'Teacher'
                       ? `${reviewingStudent.name}’s Vocabulary Practice Notes (${submission?.status || 'To do'})`
+                      : currentStudent.id === 'preview'
+                      ? 'Your Vocabulary Practice Notes'
                       : `Your Vocabulary Practice Notes (${currentStudent.name})`
                     : assignment.taskType === 'test'
                     ? role === 'Teacher'
                       ? `${reviewingStudent.name}’s Test Submission & Notes (${submission?.status || 'To do'})`
+                      : currentStudent.id === 'preview'
+                      ? 'Your Test Reflection & Notes'
                       : `Your Test Reflection & Notes (${currentStudent.name})`
                     : role === 'Teacher'
                     ? `${reviewingStudent.name}’s essay (${submission?.status || 'To do'})`
+                    : currentStudent.id === 'preview'
+                    ? 'Your first draft starts here'
                     : `Your first draft starts here (${currentStudent.name})`}
                 </h3>
 
@@ -445,7 +451,9 @@ export function EditorView({
                   : dirty
                   ? 'You have unsaved changes'
                   : submission
-                  ? `Saved to ${currentStudent.name}’s workspace`
+                  ? currentStudent.id === 'preview'
+                    ? 'Saved to student workspace'
+                    : `Saved to ${currentStudent.name}’s workspace`
                   : 'Ready when you are'}
               </span>
               {role === 'Student' && (
@@ -542,11 +550,19 @@ export function EditorView({
                 onClick={onSubmitHomework}
               >
                 {assignment.taskType === 'flashcards'
-                  ? `Hand in flash card notes (${currentStudent.name})`
+                  ? currentStudent.id === 'preview'
+                    ? 'Hand in flash card notes'
+                    : `Hand in flash card notes (${currentStudent.name})`
                   : assignment.taskType === 'test'
-                  ? `Submit test results (${currentStudent.name})`
+                  ? currentStudent.id === 'preview'
+                    ? 'Submit test results'
+                    : `Submit test results (${currentStudent.name})`
                   : assignment.taskType === 'word_scramble' || assignment.taskType === 'connecting_words'
-                  ? `Hand in activity & notes (${currentStudent.name})`
+                  ? currentStudent.id === 'preview'
+                    ? 'Hand in activity & notes'
+                    : `Hand in activity & notes (${currentStudent.name})`
+                  : currentStudent.id === 'preview'
+                  ? 'Hand in homework'
                   : `Hand in homework (${currentStudent.name})`}{' '}
                 <Send size={17} />
               </button>

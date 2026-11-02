@@ -10,10 +10,12 @@ import {
   CalendarCheck,
 } from 'lucide-react';
 import type { Role, Student } from '../../lib/types';
+import type { ClassroomUser } from '../../lib/auth-types';
 
 interface SidebarProps {
   page: string;
   role: Role;
+  currentUser?: ClassroomUser | null;
   selectedStudent: Student;
   totalAssignments: number;
   completedAssignments: number;
@@ -23,6 +25,7 @@ interface SidebarProps {
 export function Sidebar({
   page,
   role,
+  currentUser,
   selectedStudent,
   totalAssignments,
   completedAssignments,
@@ -84,18 +87,26 @@ export function Sidebar({
 
       <div className="side-bottom">
         <div className="avatar">
-          {role === 'Student' ? selectedStudent.avatar : 'T'}
+          {role === 'Teacher'
+            ? 'T'
+            : currentUser?.role === 'Student'
+            ? currentUser.avatar
+            : 'S'}
         </div>
         <div>
           <strong>
-            {role === 'Student'
+            {role === 'Teacher'
+              ? 'Teacher workspace'
+              : currentUser?.role === 'Student'
               ? `${selectedStudent.name} (Student)`
-              : 'Teacher workspace'}
+              : 'Student View (Preview)'}
           </strong>
           <small>
-            {role === 'Student'
+            {role === 'Teacher'
+              ? 'Classroom: Hajun, Mark, Juwon'
+              : currentUser?.role === 'Student'
               ? 'Essay explorers · Ages 10–11'
-              : 'Classroom: Hajun, Mark, Juwon'}
+              : 'Reviewing student experience'}
           </small>
         </div>
       </div>
