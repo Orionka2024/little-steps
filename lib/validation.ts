@@ -42,10 +42,23 @@ export const ConnectingWordsActivitySchema = z.object({
   pairs: z.array(ConnectingWordsPairSchema).min(1),
 });
 
+export const FlashCardItemSchema = z.object({
+  front: z.string().min(1),
+  back: z.string().min(1),
+  hint: z.string().optional().default(''),
+});
+
+export const FlashCardsActivitySchema = z.object({
+  type: z.literal('flashcards'),
+  title: z.string().min(1),
+  cards: z.array(FlashCardItemSchema).min(1),
+});
+
 export const InteractiveActivitySchema = z.discriminatedUnion('type', [
   QuizActivitySchema,
   WordScrambleActivitySchema,
   ConnectingWordsActivitySchema,
+  FlashCardsActivitySchema,
 ]);
 
 export const ActivityScoreSchema = z.object({
@@ -59,6 +72,10 @@ export const AssignmentPayloadSchema = z.object({
   kind: z.literal('assignment'),
   title: z.string().min(1).max(100),
   type: z.string().min(1).max(40),
+  taskType: z
+    .enum(['essay', 'flashcards', 'test', 'word_scramble', 'connecting_words'])
+    .optional()
+    .default('essay'),
   due: z.string().min(1),
   minutes: z.number().int().positive().default(25),
   words: z.number().int().positive().optional(),
@@ -68,6 +85,7 @@ export const AssignmentPayloadSchema = z.object({
   icon: z.string().optional(),
   interactive: InteractiveActivitySchema.optional(),
   localId: z.string().optional(),
+  posted: z.boolean().optional().default(false),
 });
 
 export const MaterialPayloadSchema = z.object({

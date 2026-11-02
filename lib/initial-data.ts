@@ -15,6 +15,7 @@ export const INITIAL_ASSIGNMENTS: AssignmentEntry[] = [
       'Spend 10 minutes brainstorming your idea out loud, then 20 minutes writing:\n\nIf you could change one rule in your school, what would it be and why?\n\n• State the rule you want to change clearly in your opening.\n• Give two convincing reasons supported by real-life details or examples.\n• Finish with a strong concluding thought about how school life would improve.',
     color: 'mint',
     icon: '🏫',
+    posted: false,
     interactive: {
       type: 'quiz',
       title: 'Diagnostic Warm-up: Strong Arguments',
@@ -58,6 +59,7 @@ export const INITIAL_ASSIGNMENTS: AssignmentEntry[] = [
       'Write 150–200 words about your special place. Start with an opening that makes your reader curious. Describe what you can see, hear and feel. Finish by explaining why this place matters to you.',
     color: 'peach',
     icon: '🏡',
+    posted: false,
     interactive: {
       type: 'word_scramble',
       title: 'Warm-up: Sensory Words Game',
@@ -93,6 +95,7 @@ export const INITIAL_ASSIGNMENTS: AssignmentEntry[] = [
       'Write 180–250 words. State your opinion in the introduction, give two reasons with examples, and finish with a conclusion. Try using “I believe”, “For example” and “In conclusion”.',
     color: 'mint',
     icon: '🌱',
+    posted: false,
     interactive: {
       type: 'quiz',
       title: 'Opinion vs. Fact Quick Quiz',
@@ -131,6 +134,7 @@ export const INITIAL_ASSIGNMENTS: AssignmentEntry[] = [
       'Write a story of 120–180 words. Include a beginning, a surprising problem and an ending. What happened when everything went backwards?',
     color: 'lavender',
     icon: '🚀',
+    posted: false,
     interactive: {
       type: 'word_scramble',
       title: 'Creative Words Challenge',

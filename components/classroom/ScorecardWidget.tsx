@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Award, Copy, Check, Target, Sparkles, BookOpen } from 'lucide-react';
+import { Award, Copy, Check, Target, Sparkles } from 'lucide-react';
 import type { WritingScorecard, Role, Student } from '../../lib/types';
 
 export const RUBRIC_CRITERIA = [

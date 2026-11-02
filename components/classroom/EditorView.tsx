@@ -53,6 +53,7 @@ interface EditorViewProps {
   loaded: boolean;
   onBack: () => void;
   onOpenWritingGuide: () => void;
+  onTogglePost?: (assignment: AssignmentEntry) => void;
 }
 
 export function EditorView({
@@ -83,6 +84,7 @@ export function EditorView({
   loaded,
   onBack,
   onOpenWritingGuide,
+  onTogglePost,
 }: EditorViewProps) {
   const [markupMode, setMarkupMode] = useState<boolean>(false);
   const [showStudentMarkup, setShowStudentMarkup] = useState<boolean>(true);
@@ -118,6 +120,62 @@ export function EditorView({
           Due {formattedDueDate} · About {assignment.minutes || 25} minutes
         </p>
       </div>
+
+      {role === 'Student' && !assignment.posted && (
+        <div className="notice" style={{ marginBottom: '24px' }}>
+          🔒 This homework assignment has not yet been posted by your teacher. Please check back soon!
+        </div>
+      )}
+
+      {role === 'Teacher' && (
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            background: assignment.posted ? '#f0f7f2' : '#fdf8ee',
+            border: assignment.posted ? '1px solid #cbe3d2' : '1px solid #fae2bd',
+            borderRadius: '12px',
+            padding: '14px 18px',
+            marginBottom: '20px',
+            gap: '16px',
+            flexWrap: 'wrap',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <span style={{ fontSize: '20px' }}>{assignment.posted ? '📢' : '🔒'}</span>
+            <div>
+              <strong style={{ fontSize: '13px', color: assignment.posted ? '#246142' : '#94580f' }}>
+                {assignment.posted ? 'Posted to Classroom' : 'Not Yet Posted (Hidden from Students)'}
+              </strong>
+              <p style={{ margin: '2px 0 0', fontSize: '11px', color: assignment.posted ? '#3b705e' : '#8c591c' }}>
+                {assignment.posted
+                  ? 'All students (Hajun, Mark, Juwon) can see, open, and work on this homework.'
+                  : 'Students cannot see this assignment yet. You can prepare, review, or edit it before posting.'}
+              </p>
+            </div>
+          </div>
+
+          {onTogglePost && (
+            <button
+              type="button"
+              onClick={() => onTogglePost(assignment)}
+              style={{
+                fontSize: '12px',
+                padding: '8px 14px',
+                fontWeight: 600,
+                cursor: 'pointer',
+                borderRadius: '7px',
+                background: assignment.posted ? '#ffffff' : '#286654',
+                color: assignment.posted ? '#34473d' : '#ffffff',
+                border: assignment.posted ? '1px solid #cfdad3' : '1px solid #286654',
+              }}
+            >
+              {assignment.posted ? 'Unpost (Hide from students)' : 'Post to classroom now ✦'}
+            </button>
+          )}
+        </div>
+      )}
 
       {role === 'Teacher' && (
         <div
@@ -206,7 +264,17 @@ export function EditorView({
       <div className="editor-grid">
         <div>
           <div className="instructions">
-            <h3>Your mission</h3>
+            <h3>
+              {assignment.taskType === 'flashcards'
+                ? '🗂️ Flash Card Study Mission'
+                : assignment.taskType === 'test'
+                ? '📝 Topic Test & Assessment'
+                : assignment.taskType === 'word_scramble'
+                ? '🔤 Vocabulary Word Scramble Challenge'
+                : assignment.taskType === 'connecting_words'
+                ? '🔗 Connecting Words Challenge'
+                : 'Your writing mission'}
+            </h3>
             <p>{assignment.instructions}</p>
           </div>
 
@@ -214,7 +282,15 @@ export function EditorView({
             <div className="writing-top">
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
                 <h3>
-                  {role === 'Teacher'
+                  {assignment.taskType === 'flashcards'
+                    ? role === 'Teacher'
+                      ? `${reviewingStudent.name}’s Vocabulary Practice Notes (${submission?.status || 'To do'})`
+                      : `Your Vocabulary Practice Notes (${currentStudent.name})`
+                    : assignment.taskType === 'test'
+                    ? role === 'Teacher'
+                      ? `${reviewingStudent.name}’s Test Submission & Notes (${submission?.status || 'To do'})`
+                      : `Your Test Reflection & Notes (${currentStudent.name})`
+                    : role === 'Teacher'
                     ? `${reviewingStudent.name}’s essay (${submission?.status || 'To do'})`
                     : `Your first draft starts here (${currentStudent.name})`}
                 </h3>
@@ -341,10 +417,16 @@ export function EditorView({
               </div>
             ) : (
               <textarea
-                aria-label="Essay draft"
+                aria-label="Homework work"
                 placeholder={
                   role === 'Teacher'
-                    ? `${reviewingStudent.name} has not written an essay yet.`
+                    ? `${reviewingStudent.name} has not submitted work or notes yet.`
+                    : assignment.taskType === 'flashcards'
+                    ? 'Practice using your flashcard vocabulary words in 2-3 sentences here, or jot down notes...'
+                    : assignment.taskType === 'test'
+                    ? 'Write down any reflection, notes, or questions for your teacher here...'
+                    : assignment.taskType === 'word_scramble' || assignment.taskType === 'connecting_words'
+                    ? 'Write sentences using your new vocabulary and transition phrases here...'
                     : 'I want to tell you about…'
                 }
                 value={draft}
@@ -459,7 +541,14 @@ export function EditorView({
                 disabled={busy || !loaded}
                 onClick={onSubmitHomework}
               >
-                Hand in homework ({currentStudent.name}) <Send size={17} />
+                {assignment.taskType === 'flashcards'
+                  ? `Hand in flash card notes (${currentStudent.name})`
+                  : assignment.taskType === 'test'
+                  ? `Submit test results (${currentStudent.name})`
+                  : assignment.taskType === 'word_scramble' || assignment.taskType === 'connecting_words'
+                  ? `Hand in activity & notes (${currentStudent.name})`
+                  : `Hand in homework (${currentStudent.name})`}{' '}
+                <Send size={17} />
               </button>
             </div>
           )}

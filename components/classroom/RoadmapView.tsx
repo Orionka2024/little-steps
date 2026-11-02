@@ -2,18 +2,11 @@
 
 import React, { useState } from 'react';
 import {
-  Compass,
   Calendar,
   BookOpen,
   ExternalLink,
-  Award,
-  Sparkles,
   ArrowRight,
-  CheckCircle2,
-  HelpCircle,
   Lightbulb,
-  ShieldCheck,
-  Layers,
   GraduationCap,
 } from 'lucide-react';
 import type { Role, AssignmentEntry } from '../../lib/types';
@@ -26,10 +19,8 @@ interface RoadmapViewProps {
 }
 
 export function RoadmapView({
-  role,
   onOpenAssignment,
   diagnosticAssignment,
-  onNavigate,
 }: RoadmapViewProps) {
   const [activeTab, setActiveTab] = useState<'roadmap' | 'tips' | 'exercises' | 'levels'>('roadmap');
 

@@ -16,6 +16,7 @@ interface HomeViewProps {
   onOpenAssignment: (assignment: AssignmentEntry) => void;
   onOpenResource: (resource: MaterialEntry) => void;
   onNavigate: (page: string) => void;
+  onTogglePost?: (assignment: AssignmentEntry, e: React.MouseEvent) => void;
 }
 
 export function HomeView({
@@ -29,11 +30,13 @@ export function HomeView({
   onOpenAssignment,
   onOpenResource,
   onNavigate,
+  onTogglePost,
 }: HomeViewProps) {
   const totalCount = assignments.length;
   const progressPercent =
     totalCount > 0 ? Math.min(100, Math.round((completedCount / totalCount) * 100)) : 0;
-  const nextAssignment = assignments.find((a) => getStatus(a) === 'To do') || assignments[0];
+  const nextAssignment =
+    totalCount > 0 ? assignments.find((a) => getStatus(a) === 'To do') || assignments[0] : null;
 
   return (
     <>
@@ -61,10 +64,14 @@ export function HomeView({
             with your ideas.
           </h2>
           <p>Find your words, make a first draft, and let your imagination do the rest.</p>
-          {nextAssignment && (
+          {nextAssignment ? (
             <button className="primary" onClick={() => onOpenAssignment(nextAssignment)}>
               Let’s get writing <ArrowUpRight size={17} />
             </button>
+          ) : (
+            <div style={{ marginTop: '16px', fontSize: '13px', color: '#38644b', fontWeight: 600 }}>
+              ✨ All caught up! No homework tasks posted yet.
+            </div>
           )}
           <small>No perfect words needed. Just a beginning.</small>
         </div>
@@ -104,16 +111,33 @@ export function HomeView({
             </button>
           </div>
           <div className="cards">
-            {assignments.slice(0, 2).map((a) => (
-              <AssignmentCard
-                key={a.id}
-                assignment={a}
-                status={getStatus(a)}
-                role={role}
-                studentSubmissions={getStudentSubmissions(a)}
-                onOpen={onOpenAssignment}
-              />
-            ))}
+            {assignments.length > 0 ? (
+              assignments.slice(0, 2).map((a) => (
+                <AssignmentCard
+                  key={a.id}
+                  assignment={a}
+                  status={getStatus(a)}
+                  role={role}
+                  studentSubmissions={getStudentSubmissions(a)}
+                  onOpen={onOpenAssignment}
+                  onTogglePost={onTogglePost}
+                />
+              ))
+            ) : (
+              <div
+                className="empty"
+                style={{
+                  gridColumn: '1 / -1',
+                  padding: '30px 20px',
+                  textAlign: 'center',
+                  fontSize: '12px',
+                }}
+              >
+                {role === 'Student'
+                  ? 'No homework tasks posted yet. Check back soon or explore the writing guide!'
+                  : 'No homework assignments available.'}
+              </div>
+            )}
           </div>
         </div>
 
@@ -135,7 +159,9 @@ export function HomeView({
               <div style={{ width: `${progressPercent}%` }} />
             </div>
             <small>
-              {completedCount
+              {totalCount === 0
+                ? 'No active homework assignments right now.'
+                : completedCount
                 ? 'Keep it up. Your ideas are growing!'
                 : 'Your next adventure is waiting for you.'}
             </small>

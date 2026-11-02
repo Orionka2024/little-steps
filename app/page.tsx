@@ -13,6 +13,10 @@ import type {
   Student,
   InteractiveActivity,
   WritingScorecard,
+  AssignmentTaskType,
+  FlashCardItem,
+  WordScrambleItem,
+  QuizQuestion,
 } from '../lib/types';
 import {
   isAssignment,
@@ -131,13 +135,30 @@ export default function App() {
   // Derived datasets
   const allAssignments = useMemo<AssignmentEntry[]>(() => {
     const custom = rows.filter(isAssignment);
-    return [...INITIAL_ASSIGNMENTS, ...custom];
+    return [
+      ...INITIAL_ASSIGNMENTS.map((init) => {
+        const overridden = custom.find((c) => c.id === init.id);
+        return overridden || init;
+      }),
+      ...custom.filter((c) => !INITIAL_ASSIGNMENTS.some((init) => init.id === c.id)),
+    ];
   }, [rows]);
 
   const allMaterials = useMemo<MaterialEntry[]>(() => {
     const custom = rows.filter(isMaterial);
-    return [...INITIAL_MATERIALS, ...custom];
+    return [
+      ...INITIAL_MATERIALS.map((init) => {
+        const overridden = custom.find((c) => c.id === init.id);
+        return overridden || init;
+      }),
+      ...custom.filter((c) => !INITIAL_MATERIALS.some((init) => init.id === c.id)),
+    ];
   }, [rows]);
+
+  const visibleAssignments = useMemo<AssignmentEntry[]>(() => {
+    if (role === 'Teacher') return allAssignments;
+    return allAssignments.filter((a) => a.posted === true);
+  }, [allAssignments, role]);
 
   const allMessages = useMemo<MessageEntry[]>(() => {
     return rows.filter(isMessage);
@@ -178,10 +199,10 @@ export default function App() {
   );
 
   const completedCount = useMemo(() => {
-    return allAssignments.filter((a) =>
+    return visibleAssignments.filter((a) =>
       ['Handed in', 'Reviewed'].includes(getHomeworkStatus(a))
     ).length;
-  }, [allAssignments, getHomeworkStatus]);
+  }, [visibleAssignments, getHomeworkStatus]);
 
   async function action(fn: () => Promise<void>) {
     setBusy(true);
@@ -214,6 +235,10 @@ export default function App() {
   }
 
   function openAssignment(assignment: AssignmentEntry) {
+    if (role === 'Student' && !assignment.posted) {
+      setToast('This homework assignment has not been released yet.');
+      return;
+    }
     setActive(assignment);
     const targetStudent = role === 'Teacher' ? reviewingStudent : selectedStudent;
     const existingSubmission = getSubmission(assignment.id, targetStudent.id);
@@ -224,6 +249,27 @@ export default function App() {
     setAnnotations(existingSubmission?.annotations || '');
     setDirty(false);
     setPage('Editor');
+  }
+
+  async function handleTogglePost(assignment: AssignmentEntry) {
+    if (role !== 'Teacher') return;
+    const newPostedStatus = !assignment.posted;
+    const updatedAssignment: AssignmentEntry = {
+      ...assignment,
+      posted: newPostedStatus,
+    };
+
+    await action(async () => {
+      await saveEntry(updatedAssignment);
+      if (active && active.id === assignment.id) {
+        setActive(updatedAssignment);
+      }
+      setToast(
+        newPostedStatus
+          ? `"${assignment.title}" is now posted to the classroom!`
+          : `"${assignment.title}" unposted. Hidden from students.`
+      );
+    });
   }
 
   // Teacher switches which student they are reviewing in Editor
@@ -466,22 +512,160 @@ export default function App() {
       }
 
       if (modal === 'assignment') {
+        const taskFormat = (String(fd.get('taskFormat') || 'essay')) as AssignmentTaskType;
+        const posted = fd.get('posted') === 'true';
+
+        let interactive: InteractiveActivity | undefined;
+        let icon = '✏️';
+        let defaultType = 'Opinion essay';
+        let color = 'mint';
+
+        if (taskFormat === 'flashcards') {
+          icon = '🗂️';
+          color = 'lavender';
+          defaultType = 'Vocabulary Flash Cards';
+          const rawCards = fd.get('flashcards_data');
+          let cards: FlashCardItem[] = [];
+          if (typeof rawCards === 'string' && rawCards.trim()) {
+            try {
+              cards = JSON.parse(rawCards);
+            } catch {}
+          }
+          if (!cards.length) {
+            cards = [
+              {
+                front: 'MOMENTOUS',
+                back: 'Of great importance or significance, especially in having a major effect on future events.',
+                hint: 'Adjective - very significant',
+              },
+            ];
+          }
+          interactive = {
+            type: 'flashcards',
+            title: `${title} Flash Cards`,
+            cards,
+          };
+        } else if (taskFormat === 'test') {
+          icon = '📝';
+          color = 'peach';
+          defaultType = 'Topic & Vocabulary Test';
+          const rawQuestions = fd.get('quiz_questions_data');
+          let questions: QuizQuestion[] = [];
+          if (typeof rawQuestions === 'string' && rawQuestions.trim()) {
+            try {
+              questions = JSON.parse(rawQuestions);
+            } catch {}
+          }
+          if (!questions.length) {
+            questions = [
+              {
+                question: 'What is the most effective way to start an essay introduction?',
+                options: ['A bold, clear thesis statement', 'A list of dictionary words'],
+                correctIndex: 0,
+                explanation: 'A strong thesis or bold opening statement captivates your reader!',
+              },
+            ];
+          }
+          interactive = {
+            type: 'quiz',
+            title: `${title} Test`,
+            questions,
+          };
+        } else if (taskFormat === 'word_scramble') {
+          icon = '🔤';
+          color = 'mint';
+          defaultType = 'Word Scramble Challenge';
+          const rawWords = fd.get('scramble_words_data');
+          let words: WordScrambleItem[] = [];
+          if (typeof rawWords === 'string' && rawWords.trim()) {
+            try {
+              words = JSON.parse(rawWords);
+            } catch {}
+          }
+          if (!words.length) {
+            words = [
+              { word: 'GLIMMER', scrambled: 'MLMGREI', hint: 'A soft gentle shine' },
+            ];
+          }
+          interactive = {
+            type: 'word_scramble',
+            title: `${title} Word Scramble`,
+            words,
+          };
+        } else if (taskFormat === 'connecting_words') {
+          icon = '🔗';
+          color = 'mint';
+          defaultType = 'Connecting Words Challenge';
+          interactive = {
+            type: 'connecting_words',
+            title: `${title} Connecting Words`,
+            pairs: [
+              { phrase: 'For example', category: 'Give an example' },
+              { phrase: 'However', category: 'Show a difference' },
+              { phrase: 'In addition', category: 'Add an idea' },
+              { phrase: 'Because', category: 'Show a reason' },
+            ],
+          };
+        } else if (activityType === 'word_scramble') {
+          const word = String(fd.get('scramble_word1') || 'GLIMMER').trim().toUpperCase();
+          const hint = String(fd.get('scramble_hint1') || 'A soft gentle shine');
+          const scrambled = word.split('').sort(() => Math.random() - 0.5).join('');
+          interactive = {
+            type: 'word_scramble',
+            title: `${title} Word Scramble`,
+            words: [{ scrambled, word, hint }],
+          };
+        } else if (activityType === 'quiz') {
+          const question = String(fd.get('quiz_question') || 'What makes a strong first draft?');
+          const opt1 = String(fd.get('quiz_opt1') || 'Sharing honest ideas and feelings');
+          const opt2 = String(fd.get('quiz_opt2') || 'Making it 100% perfect on the first try');
+          const explanation = String(fd.get('quiz_explanation') || 'Drafts are for exploring your imagination!');
+          interactive = {
+            type: 'quiz',
+            title: `${title} Comprehension Quiz`,
+            questions: [
+              {
+                question,
+                options: [opt1, opt2],
+                correctIndex: 0,
+                explanation,
+              },
+            ],
+          };
+        } else if (activityType === 'connecting_words') {
+          interactive = {
+            type: 'connecting_words',
+            title: 'Connecting Words Challenge',
+            pairs: [
+              { phrase: 'For example', category: 'Give an example' },
+              { phrase: 'However', category: 'Show a difference' },
+              { phrase: 'In addition', category: 'Add an idea' },
+            ],
+          };
+        }
+
         const newAssignment: AssignmentEntry = {
           id: crypto.randomUUID(),
           kind: 'assignment',
+          taskType: taskFormat,
           title,
-          type,
-          color: 'mint',
-          icon: '✏️',
+          type: type.trim() || defaultType,
+          color,
+          icon,
           due: String(fd.get('due') || ''),
           description: String(fd.get('description') || ''),
           instructions: String(fd.get('instructions') || ''),
-          minutes: 25,
+          minutes: Number(fd.get('minutes')) || 25,
+          posted,
           interactive,
         };
         await saveEntry(newAssignment);
         setModal('');
-        setToast('Homework assigned to the classroom.');
+        setToast(
+          posted
+            ? `Homework "${title}" assigned and posted to the classroom.`
+            : `Homework "${title}" saved as unposted draft. Students cannot see it yet.`
+        );
       } else if (modal === 'material') {
         let uploadedFile: FileAttachment | undefined;
         const file = fd.get('file');
@@ -552,7 +736,7 @@ export default function App() {
         page={page}
         role={role}
         selectedStudent={selectedStudent}
-        totalAssignments={allAssignments.length}
+        totalAssignments={visibleAssignments.length}
         completedAssignments={completedCount}
         onNavigate={navigateTo}
       />
@@ -576,7 +760,7 @@ export default function App() {
             <HomeView
               role={role}
               currentStudent={selectedStudent}
-              assignments={allAssignments}
+              assignments={visibleAssignments}
               resources={allMaterials}
               completedCount={completedCount}
               getStatus={getHomeworkStatus}
@@ -587,6 +771,7 @@ export default function App() {
                 setModal('resource');
               }}
               onNavigate={navigateTo}
+              onTogglePost={handleTogglePost}
             />
           )}
 
@@ -600,6 +785,7 @@ export default function App() {
               getStudentSubmissions={getStudentSubmissions}
               onOpenAssignment={openAssignment}
               onOpenCreateModal={() => setModal('assignment')}
+              onTogglePost={handleTogglePost}
             />
           )}
 
@@ -620,7 +806,11 @@ export default function App() {
           {page === 'Roadmap' && (
             <RoadmapView
               role={role}
-              diagnosticAssignment={allAssignments.find((a) => a.id === 'a0') || allAssignments[0]}
+              diagnosticAssignment={
+                role === 'Teacher' || allAssignments.find((a) => a.id === 'a0')?.posted
+                  ? allAssignments.find((a) => a.id === 'a0') || allAssignments[0]
+                  : undefined
+              }
               onOpenAssignment={openAssignment}
               onNavigate={navigateTo}
             />
@@ -661,6 +851,7 @@ export default function App() {
               onSaveDraft={() => submitHomework('Draft')}
               onSubmitHomework={() => submitHomework('Handed in')}
               onResetSubmission={handleResetSubmission}
+              onTogglePost={handleTogglePost}
               onSaveAnnotations={(newAnnotations) => {
                 setAnnotations(newAnnotations);
                 const targetSub = getSubmission(active.id, reviewingStudent.id);

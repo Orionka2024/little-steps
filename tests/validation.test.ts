@@ -8,6 +8,7 @@ import {
   MessagePayloadSchema,
   FileAttachmentSchema,
   InteractiveActivitySchema,
+  FlashCardsActivitySchema,
 } from '../lib/validation.ts';
 import { INITIAL_ASSIGNMENTS, INITIAL_MATERIALS } from '../lib/initial-data.ts';
 
@@ -42,6 +43,20 @@ test('AssignmentPayloadSchema validates required assignment fields', () => {
   };
   const result = AssignmentPayloadSchema.safeParse(validAssignment);
   assert.ok(result.success);
+  if (result.success) {
+    assert.strictEqual(result.data.posted, false, 'Should default posted to false');
+  }
+
+  const postedAssignment = {
+    ...validAssignment,
+    id: 'a100-posted',
+    posted: true,
+  };
+  const postedResult = AssignmentPayloadSchema.safeParse(postedAssignment);
+  assert.ok(postedResult.success);
+  if (postedResult.success) {
+    assert.strictEqual(postedResult.data.posted, true, 'Should accept posted: true');
+  }
 
   // Missing title
   const invalid = {
@@ -91,6 +106,41 @@ test('InteractiveActivitySchema validates quiz and word scramble edutainment', (
     ],
   };
   assert.ok(InteractiveActivitySchema.safeParse(connectors).success);
+
+  const flashcards = {
+    type: 'flashcards',
+    title: 'Week 2 Vocabulary Cards',
+    cards: [
+      {
+        front: 'MOMENTOUS',
+        back: 'Of great importance or significance.',
+        hint: 'Adjective',
+      },
+      {
+        front: 'VIVID',
+        back: 'Producing powerful clear images.',
+      },
+    ],
+  };
+  assert.ok(FlashCardsActivitySchema.safeParse(flashcards).success);
+  assert.ok(InteractiveActivitySchema.safeParse(flashcards).success);
+
+  const flashcardAssignment = {
+    id: 'a-flashcards-1',
+    kind: 'assignment',
+    taskType: 'flashcards',
+    title: 'Sensory Words Deck',
+    type: 'Vocabulary Flash Cards',
+    due: '2026-11-20',
+    description: 'Master these 2 words.',
+    instructions: 'Flip through the cards and test your recall.',
+    interactive: flashcards,
+  };
+  const parsedFc = AssignmentPayloadSchema.safeParse(flashcardAssignment);
+  assert.ok(parsedFc.success);
+  if (parsedFc.success) {
+    assert.strictEqual(parsedFc.data.taskType, 'flashcards');
+  }
 });
 
 test('SubmissionPayloadSchema handles draft, student attribution, and edutainment score', () => {
@@ -180,6 +230,11 @@ test('Initial datasets adhere to domain constraints and interactive rules', () =
   for (const assignment of INITIAL_ASSIGNMENTS) {
     const result = AssignmentPayloadSchema.safeParse(assignment);
     assert.ok(result.success, `Initial assignment ${assignment.id} must be valid`);
+    assert.strictEqual(
+      assignment.posted,
+      false,
+      `Initial assignment ${assignment.id} must be unposted (posted: false) by default`
+    );
   }
 
   for (const material of INITIAL_MATERIALS) {

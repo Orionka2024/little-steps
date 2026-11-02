@@ -17,6 +17,15 @@ export async function GET() {
   }
 
   const entries = await getStoredRecords('local_seedy');
+  if (user.role === 'Student') {
+    const studentEntries = entries.filter((entry) => {
+      if (entry.kind === 'assignment') {
+        return (entry as { posted?: boolean }).posted === true;
+      }
+      return true;
+    });
+    return Response.json(studentEntries);
+  }
   return Response.json(entries);
 }
 

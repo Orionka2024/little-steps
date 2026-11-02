@@ -20,7 +20,19 @@ export interface FileAttachment {
   size: number;
 }
 
-export type ActivityType = 'quiz' | 'word_scramble' | 'connecting_words';
+export type ActivityType = 'quiz' | 'word_scramble' | 'connecting_words' | 'flashcards';
+
+export interface FlashCardItem {
+  front: string;
+  back: string;
+  hint?: string;
+}
+
+export interface FlashCardsActivity {
+  type: 'flashcards';
+  title: string;
+  cards: FlashCardItem[];
+}
 
 export interface QuizQuestion {
   question: string;
@@ -61,7 +73,15 @@ export interface ConnectingWordsActivity {
 export type InteractiveActivity =
   | QuizActivity
   | WordScrambleActivity
-  | ConnectingWordsActivity;
+  | ConnectingWordsActivity
+  | FlashCardsActivity;
+
+export type AssignmentTaskType =
+  | 'essay'
+  | 'flashcards'
+  | 'test'
+  | 'word_scramble'
+  | 'connecting_words';
 
 export interface ActivityScore {
   score: number;
@@ -74,6 +94,7 @@ export interface AssignmentEntry {
   kind: 'assignment';
   title: string;
   type: string;
+  taskType?: AssignmentTaskType;
   due: string;
   minutes: number;
   words?: number;
@@ -83,6 +104,7 @@ export interface AssignmentEntry {
   icon?: string;
   interactive?: InteractiveActivity;
   localId?: string;
+  posted?: boolean;
 }
 
 export interface MaterialEntry {

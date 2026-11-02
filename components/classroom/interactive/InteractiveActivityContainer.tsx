@@ -5,6 +5,7 @@ import type { InteractiveActivity } from '../../../lib/types';
 import { QuizGame } from './QuizGame';
 import { WordScrambleGame } from './WordScrambleGame';
 import { ConnectorMatchGame } from './ConnectorMatchGame';
+import { FlashCardsGame } from './FlashCardsGame';
 
 interface InteractiveActivityContainerProps {
   activity: InteractiveActivity;
@@ -35,9 +36,11 @@ export function InteractiveActivityContainer({
       >
         <span>
           {activity.type === 'quiz'
-            ? '📝 Interactive Quiz'
+            ? '📝 Interactive Quiz & Test'
             : activity.type === 'word_scramble'
             ? '🔤 Vocabulary Word Scramble'
+            : activity.type === 'flashcards'
+            ? '🗂️ Vocabulary & Concept Flash Cards'
             : '🔗 Connecting Words Challenge'}
         </span>
         <span style={{ marginLeft: 'auto', fontWeight: 500, color: '#688274' }}>
@@ -63,6 +66,14 @@ export function InteractiveActivityContainer({
 
       {activity.type === 'connecting_words' && (
         <ConnectorMatchGame
+          activity={activity}
+          studentName={studentName}
+          onComplete={onComplete}
+        />
+      )}
+
+      {activity.type === 'flashcards' && (
+        <FlashCardsGame
           activity={activity}
           studentName={studentName}
           onComplete={onComplete}
