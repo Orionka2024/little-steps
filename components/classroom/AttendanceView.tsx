@@ -588,7 +588,8 @@ Outstanding Due: ${t.balanceDue.toLocaleString()} CZK (${t.unpaidCount} unpaid $
                     <button
                       type="button"
                       className="text-button"
-                      onClick={() => {
+                      onClick={(e) => {
+                        e.stopPropagation();
                         if (confirm(`Delete the lesson date for ${formattedDate}?`)) {
                           onDeleteAttendance(session.id);
                         }

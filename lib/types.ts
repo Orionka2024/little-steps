@@ -212,13 +212,21 @@ export interface BillingConfigEntry {
   localId?: string;
 }
 
+export interface DeletedAttendanceEntry {
+  id: string;
+  kind: 'deleted_attendance';
+  targetId: string;
+  localId?: string;
+}
+
 export type Entry =
   | AssignmentEntry
   | MaterialEntry
   | SubmissionEntry
   | MessageEntry
   | AttendanceEntry
-  | BillingConfigEntry;
+  | BillingConfigEntry
+  | DeletedAttendanceEntry;
 
 export function isAssignment(entry: Entry): entry is AssignmentEntry {
   return entry.kind === 'assignment';
@@ -243,4 +251,9 @@ export function isAttendance(entry: Entry): entry is AttendanceEntry {
 export function isBillingConfig(entry: Entry): entry is BillingConfigEntry {
   return entry.kind === 'billing_config';
 }
+
+export function isDeletedAttendance(entry: Entry): entry is DeletedAttendanceEntry {
+  return entry.kind === 'deleted_attendance';
+}
+
 

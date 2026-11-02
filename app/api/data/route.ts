@@ -70,7 +70,8 @@ export async function POST(req: Request) {
     (validated.kind === 'assignment' ||
       validated.kind === 'material' ||
       validated.kind === 'attendance' ||
-      validated.kind === 'billing_config') &&
+      validated.kind === 'billing_config' ||
+      validated.kind === 'deleted_attendance') &&
     roleHeader === 'Student'
   ) {
     return Response.json(
@@ -116,6 +117,14 @@ export async function DELETE(req: Request) {
 
   if (id) {
     const success = await deleteStoredRecord(id, 'local_seedy');
+    // If an attendance record is deleted, record a tombstone so initial seed data doesn't resurrect it
+    if (id.startsWith('att-') || id.includes('att')) {
+      await upsertStoredRecord(`del_${id}`, 'local_seedy', 'deleted_attendance', {
+        id: `del_${id}`,
+        kind: 'deleted_attendance',
+        targetId: id,
+      });
+    }
     return Response.json({ ok: true, deleted: success });
   }
 

@@ -9,6 +9,7 @@ import type {
   MessageEntry,
   AttendanceEntry,
   BillingConfigEntry,
+  DeletedAttendanceEntry,
   Role,
   HomeworkStatus,
   FileAttachment,
@@ -27,6 +28,7 @@ import {
   isMessage,
   isAttendance,
   isBillingConfig,
+  isDeletedAttendance,
   STUDENTS,
 } from '../lib/types';
 import type { ClassroomUser } from '../lib/auth-types';
@@ -175,13 +177,23 @@ export default function App() {
   }, [rows]);
 
   const allAttendance = useMemo<AttendanceEntry[]>(() => {
-    const custom = rows.filter(isAttendance);
+    const deletedIds = new Set(
+      rows
+        .filter((r): r is DeletedAttendanceEntry => isDeletedAttendance(r))
+        .map((r) => r.targetId)
+    );
+    const custom = rows.filter(isAttendance).filter((c) => !deletedIds.has(c.id));
+    const initialRemaining = INITIAL_ATTENDANCE.filter((init) => !deletedIds.has(init.id));
     return [
-      ...INITIAL_ATTENDANCE.map((init) => {
+      ...initialRemaining.map((init) => {
         const overridden = custom.find((c) => c.id === init.id);
         return overridden || init;
       }),
-      ...custom.filter((c) => !INITIAL_ATTENDANCE.some((init) => init.id === c.id)),
+      ...custom.filter(
+        (c) =>
+          !deletedIds.has(c.id) &&
+          !INITIAL_ATTENDANCE.some((init) => init.id === c.id)
+      ),
     ];
   }, [rows]);
 
@@ -502,13 +514,24 @@ export default function App() {
 
   const handleDeleteAttendance = async (id: string) => {
     await action(async () => {
+      const tombstone: DeletedAttendanceEntry = {
+        id: `del_${id}`,
+        kind: 'deleted_attendance',
+        targetId: id,
+      };
+
       const res = await fetch(`/api/data?id=${encodeURIComponent(id)}`, {
         method: 'DELETE',
         headers: { 'x-user-role': role },
       });
       if (!res.ok) throw new Error('Could not delete attendance session.');
-      setRows((prev) => prev.filter((x) => x.id !== id));
-      setToast('Lesson attendance session deleted.');
+
+      await saveEntry(tombstone);
+      setRows((prev) => [
+        ...prev.filter((x) => x.id !== id && (x as { targetId?: string }).targetId !== id),
+        tombstone,
+      ]);
+      setToast('Lesson attendance entry deleted.');
     });
   };
 

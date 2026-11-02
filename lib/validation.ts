@@ -178,6 +178,13 @@ export const BillingConfigPayloadSchema = z.object({
   localId: z.string().optional(),
 });
 
+export const DeletedAttendancePayloadSchema = z.object({
+  id: z.string().min(1),
+  kind: z.literal('deleted_attendance'),
+  targetId: z.string().min(1),
+  localId: z.string().optional(),
+});
+
 export const EntryPayloadSchema = z.discriminatedUnion('kind', [
   AssignmentPayloadSchema,
   MaterialPayloadSchema,
@@ -185,6 +192,7 @@ export const EntryPayloadSchema = z.discriminatedUnion('kind', [
   MessagePayloadSchema,
   AttendancePayloadSchema,
   BillingConfigPayloadSchema,
+  DeletedAttendancePayloadSchema,
 ]);
 
 export type ValidatedEntry = z.infer<typeof EntryPayloadSchema>;

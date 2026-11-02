@@ -333,3 +333,17 @@ test('BillingConfigPayloadSchema validates default rates and student profiles', 
   }
 });
 
+test('DeletedAttendancePayloadSchema validates tombstones in EntryPayloadSchema', () => {
+  const tombstone = {
+    id: 'del_att-1',
+    kind: 'deleted_attendance',
+    targetId: 'att-1',
+  };
+  const result = EntryPayloadSchema.safeParse(tombstone);
+  assert.ok(result.success);
+  if (result.success) {
+    assert.strictEqual(result.data.kind, 'deleted_attendance');
+    assert.strictEqual((result.data as { targetId: string }).targetId, 'att-1');
+  }
+});
+
