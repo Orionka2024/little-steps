@@ -173,7 +173,51 @@ export interface MessageEntry {
   localId?: string;
 }
 
-export type Entry = AssignmentEntry | MaterialEntry | SubmissionEntry | MessageEntry;
+export type AttendanceStatus = 'present' | 'absent' | 'late';
+
+export interface StudentAttendanceRecord {
+  studentId: string;
+  studentName: string;
+  status: AttendanceStatus;
+  chargeable: boolean;
+  note?: string;
+}
+
+export interface AttendanceEntry {
+  id: string;
+  kind: 'attendance';
+  date: string;
+  topic: string;
+  durationMinutes?: number;
+  records: StudentAttendanceRecord[];
+  ratePerLesson?: number;
+  notes?: string;
+  localId?: string;
+}
+
+export interface StudentBillingProfile {
+  studentId: string;
+  ratePerLesson?: number;
+  paidLessonsCount: number;
+  notes?: string;
+}
+
+export interface BillingConfigEntry {
+  id: string;
+  kind: 'billing_config';
+  defaultRate: number;
+  currency: string;
+  profiles: Record<string, StudentBillingProfile>;
+  localId?: string;
+}
+
+export type Entry =
+  | AssignmentEntry
+  | MaterialEntry
+  | SubmissionEntry
+  | MessageEntry
+  | AttendanceEntry
+  | BillingConfigEntry;
 
 export function isAssignment(entry: Entry): entry is AssignmentEntry {
   return entry.kind === 'assignment';
@@ -190,3 +234,12 @@ export function isSubmission(entry: Entry): entry is SubmissionEntry {
 export function isMessage(entry: Entry): entry is MessageEntry {
   return entry.kind === 'message';
 }
+
+export function isAttendance(entry: Entry): entry is AttendanceEntry {
+  return entry.kind === 'attendance';
+}
+
+export function isBillingConfig(entry: Entry): entry is BillingConfigEntry {
+  return entry.kind === 'billing_config';
+}
+

@@ -7,6 +7,8 @@ import type {
   MaterialEntry,
   SubmissionEntry,
   MessageEntry,
+  AttendanceEntry,
+  BillingConfigEntry,
   Role,
   HomeworkStatus,
   FileAttachment,
@@ -23,10 +25,17 @@ import {
   isMaterial,
   isSubmission,
   isMessage,
+  isAttendance,
+  isBillingConfig,
   STUDENTS,
 } from '../lib/types';
 import type { ClassroomUser } from '../lib/auth-types';
-import { INITIAL_ASSIGNMENTS, INITIAL_MATERIALS } from '../lib/initial-data';
+import {
+  INITIAL_ASSIGNMENTS,
+  INITIAL_MATERIALS,
+  INITIAL_ATTENDANCE,
+  INITIAL_BILLING_CONFIG,
+} from '../lib/initial-data';
 import { Sidebar } from '../components/classroom/Sidebar';
 import { Header } from '../components/classroom/Header';
 import { HomeView } from '../components/classroom/HomeView';
@@ -34,6 +43,7 @@ import { HomeworkView } from '../components/classroom/HomeworkView';
 import { RoadmapView } from '../components/classroom/RoadmapView';
 import { MaterialsView } from '../components/classroom/MaterialsView';
 import { MessagesView } from '../components/classroom/MessagesView';
+import { AttendanceView } from '../components/classroom/AttendanceView';
 import { EditorView } from '../components/classroom/EditorView';
 import { ResourceModal, CreateModal } from '../components/classroom/Modals';
 import { Toast } from '../components/classroom/Toast';
@@ -163,6 +173,23 @@ export default function App() {
   const allMessages = useMemo<MessageEntry[]>(() => {
     return rows.filter(isMessage);
   }, [rows]);
+
+  const allAttendance = useMemo<AttendanceEntry[]>(() => {
+    const custom = rows.filter(isAttendance);
+    return [
+      ...INITIAL_ATTENDANCE.map((init) => {
+        const overridden = custom.find((c) => c.id === init.id);
+        return overridden || init;
+      }),
+      ...custom.filter((c) => !INITIAL_ATTENDANCE.some((init) => init.id === c.id)),
+    ];
+  }, [rows]);
+
+  const billingConfig = useMemo<BillingConfigEntry>(() => {
+    const custom = rows.find(isBillingConfig);
+    return custom || INITIAL_BILLING_CONFIG;
+  }, [rows]);
+
 
   // Retrieve submission for a specific assignment and student
   const getSubmission = useCallback(
@@ -465,6 +492,33 @@ export default function App() {
       setToast(`Message sent as ${senderName}.`);
     });
   };
+
+  const handleSaveAttendance = async (entry: AttendanceEntry) => {
+    await action(async () => {
+      await saveEntry(entry);
+      setToast(`Attendance saved for "${entry.topic}".`);
+    });
+  };
+
+  const handleDeleteAttendance = async (id: string) => {
+    await action(async () => {
+      const res = await fetch(`/api/data?id=${encodeURIComponent(id)}`, {
+        method: 'DELETE',
+        headers: { 'x-user-role': role },
+      });
+      if (!res.ok) throw new Error('Could not delete attendance session.');
+      setRows((prev) => prev.filter((x) => x.id !== id));
+      setToast('Lesson attendance session deleted.');
+    });
+  };
+
+  const handleSaveBillingConfig = async (config: BillingConfigEntry) => {
+    await action(async () => {
+      await saveEntry(config);
+      setToast('Billing preferences and student balances updated.');
+    });
+  };
+
 
   const handleCreateModalSubmit = (fd: FormData) => {
     action(async () => {
@@ -800,6 +854,19 @@ export default function App() {
                 setModal('resource');
               }}
               onOpenCreateModal={() => setModal('material')}
+            />
+          )}
+
+          {page === 'Attendance' && (
+            <AttendanceView
+              role={role}
+              currentStudent={selectedStudent}
+              attendanceList={allAttendance}
+              billingConfig={billingConfig}
+              onSaveAttendance={handleSaveAttendance}
+              onDeleteAttendance={handleDeleteAttendance}
+              onSaveBillingConfig={handleSaveBillingConfig}
+              busy={busy}
             />
           )}
 

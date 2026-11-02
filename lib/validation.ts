@@ -141,11 +141,50 @@ export const MessagePayloadSchema = z.object({
   localId: z.string().optional(),
 });
 
+export const StudentAttendanceRecordSchema = z.object({
+  studentId: z.string().min(1),
+  studentName: z.string().min(1),
+  status: z.enum(['present', 'absent', 'late']),
+  chargeable: z.boolean().default(true),
+  note: z.string().max(500).optional(),
+});
+
+export const AttendancePayloadSchema = z.object({
+  id: z.string().min(1),
+  kind: z.literal('attendance'),
+  date: z.string().min(1),
+  topic: z.string().min(1).max(200),
+  durationMinutes: z.number().int().positive().optional().default(60),
+  records: z.array(StudentAttendanceRecordSchema),
+  ratePerLesson: z.number().positive().optional(),
+  notes: z.string().max(1000).optional(),
+  localId: z.string().optional(),
+});
+
+export const StudentBillingProfileSchema = z.object({
+  studentId: z.string().min(1),
+  ratePerLesson: z.number().positive().optional(),
+  paidLessonsCount: z.number().int().min(0).default(0),
+  notes: z.string().max(500).optional(),
+});
+
+export const BillingConfigPayloadSchema = z.object({
+  id: z.string().min(1),
+  kind: z.literal('billing_config'),
+  defaultRate: z.number().positive().default(40),
+  currency: z.string().min(1).max(10).default('$'),
+  profiles: z.record(StudentBillingProfileSchema).default({}),
+  localId: z.string().optional(),
+});
+
 export const EntryPayloadSchema = z.discriminatedUnion('kind', [
   AssignmentPayloadSchema,
   MaterialPayloadSchema,
   SubmissionPayloadSchema,
   MessagePayloadSchema,
+  AttendancePayloadSchema,
+  BillingConfigPayloadSchema,
 ]);
 
 export type ValidatedEntry = z.infer<typeof EntryPayloadSchema>;
+

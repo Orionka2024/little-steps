@@ -67,11 +67,14 @@ export async function POST(req: Request) {
 
   // Server-side authorization guard
   if (
-    (validated.kind === 'assignment' || validated.kind === 'material') &&
+    (validated.kind === 'assignment' ||
+      validated.kind === 'material' ||
+      validated.kind === 'attendance' ||
+      validated.kind === 'billing_config') &&
     roleHeader === 'Student'
   ) {
     return Response.json(
-      { error: 'Only teachers can create assignments or materials.' },
+      { error: 'Only teachers can create or modify assignments, materials, or attendance.' },
       { status: 403 }
     );
   }

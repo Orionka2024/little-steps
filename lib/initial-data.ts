@@ -1,4 +1,10 @@
-import type { AssignmentEntry, MaterialEntry } from './types';
+import type {
+  AssignmentEntry,
+  MaterialEntry,
+  AttendanceEntry,
+  BillingConfigEntry,
+} from './types';
+
 
 export const INITIAL_ASSIGNMENTS: AssignmentEntry[] = [
   {
@@ -269,3 +275,161 @@ A good writer revises. Small changes make a big difference!`,
     },
   },
 ];
+
+export const INITIAL_BILLING_CONFIG: BillingConfigEntry = {
+  id: 'billing_global',
+  kind: 'billing_config',
+  defaultRate: 40,
+  currency: '$',
+  profiles: {
+    hajun: {
+      studentId: 'hajun',
+      ratePerLesson: 40,
+      paidLessonsCount: 3,
+      notes: 'Paid through Oct 26',
+    },
+    mark: {
+      studentId: 'mark',
+      ratePerLesson: 40,
+      paidLessonsCount: 4,
+      notes: 'Paid through Nov 2',
+    },
+    juwon: {
+      studentId: 'juwon',
+      ratePerLesson: 40,
+      paidLessonsCount: 2,
+      notes: 'Paid for Oct 12 & Oct 26',
+    },
+  },
+};
+
+export const INITIAL_ATTENDANCE: AttendanceEntry[] = [
+  {
+    id: 'att-1',
+    kind: 'attendance',
+    date: '2026-10-12',
+    topic: 'Lesson 1: Diagnostic Essay & Brainstorming Out Loud',
+    durationMinutes: 60,
+    ratePerLesson: 40,
+    notes: 'Introduced the 16-week writing roadmap and out-loud brainstorming.',
+    records: [
+      {
+        studentId: 'hajun',
+        studentName: 'Hajun',
+        status: 'present',
+        chargeable: true,
+        note: 'Engaged and shared great school rule ideas',
+      },
+      {
+        studentId: 'mark',
+        studentName: 'Mark',
+        status: 'present',
+        chargeable: true,
+        note: 'Strong participation in group warmup',
+      },
+      {
+        studentId: 'juwon',
+        studentName: 'Juwon',
+        status: 'present',
+        chargeable: true,
+        note: 'Completed diagnostic brainstorm',
+      },
+    ],
+  },
+  {
+    id: 'att-2',
+    kind: 'attendance',
+    date: '2026-10-19',
+    topic: 'Lesson 2: Sensory Hooks & Showing vs Telling',
+    durationMinutes: 60,
+    ratePerLesson: 40,
+    notes: 'Practiced 5-senses descriptive language for setting scenes.',
+    records: [
+      {
+        studentId: 'hajun',
+        studentName: 'Hajun',
+        status: 'present',
+        chargeable: true,
+        note: 'Excellent sensory detail examples',
+      },
+      {
+        studentId: 'mark',
+        studentName: 'Mark',
+        status: 'present',
+        chargeable: true,
+        note: 'Great imagery with sounds and textures',
+      },
+      {
+        studentId: 'juwon',
+        studentName: 'Juwon',
+        status: 'absent',
+        chargeable: false,
+        note: 'Excused absence: family trip',
+      },
+    ],
+  },
+  {
+    id: 'att-3',
+    kind: 'attendance',
+    date: '2026-10-26',
+    topic: 'Lesson 3: Connecting Words & Paragraph Flow',
+    durationMinutes: 60,
+    ratePerLesson: 40,
+    notes: 'Transition words mastery and sentence rhythm.',
+    records: [
+      {
+        studentId: 'hajun',
+        studentName: 'Hajun',
+        status: 'present',
+        chargeable: true,
+      },
+      {
+        studentId: 'mark',
+        studentName: 'Mark',
+        status: 'late',
+        chargeable: true,
+        note: 'Joined 10m late (soccer match)',
+      },
+      {
+        studentId: 'juwon',
+        studentName: 'Juwon',
+        status: 'present',
+        chargeable: true,
+        note: 'Caught up on Week 2 material',
+      },
+    ],
+  },
+  {
+    id: 'att-4',
+    kind: 'attendance',
+    date: '2026-11-02',
+    topic: 'Lesson 4: Narrative Tension & 3D Flashcards Review',
+    durationMinutes: 60,
+    ratePerLesson: 40,
+    notes: 'Reviewed vocabulary with interactive cards and practiced building suspense.',
+    records: [
+      {
+        studentId: 'hajun',
+        studentName: 'Hajun',
+        status: 'present',
+        chargeable: true,
+        note: 'Mastered 8/8 flashcards',
+      },
+      {
+        studentId: 'mark',
+        studentName: 'Mark',
+        status: 'present',
+        chargeable: true,
+        note: 'Active discussion on cliffhanger endings',
+      },
+      {
+        studentId: 'juwon',
+        studentName: 'Juwon',
+        status: 'present',
+        chargeable: true,
+        note: 'Great vocabulary retention',
+      },
+    ],
+  },
+];
+

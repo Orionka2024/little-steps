@@ -9,8 +9,16 @@ import {
   FileAttachmentSchema,
   InteractiveActivitySchema,
   FlashCardsActivitySchema,
+  AttendancePayloadSchema,
+  BillingConfigPayloadSchema,
 } from '../lib/validation.ts';
-import { INITIAL_ASSIGNMENTS, INITIAL_MATERIALS } from '../lib/initial-data.ts';
+import {
+  INITIAL_ASSIGNMENTS,
+  INITIAL_MATERIALS,
+  INITIAL_ATTENDANCE,
+  INITIAL_BILLING_CONFIG,
+} from '../lib/initial-data.ts';
+
 
 test('FileAttachmentSchema validates file constraints', () => {
   const validFile = {
@@ -241,4 +249,87 @@ test('Initial datasets adhere to domain constraints and interactive rules', () =
     const result = MaterialPayloadSchema.safeParse(material);
     assert.ok(result.success, `Initial material ${material.id} must be valid`);
   }
+
+  for (const att of INITIAL_ATTENDANCE) {
+    const result = AttendancePayloadSchema.safeParse(att);
+    assert.ok(result.success, `Initial attendance session ${att.id} must be valid`);
+    const entryResult = EntryPayloadSchema.safeParse(att);
+    assert.ok(entryResult.success, `Initial attendance session ${att.id} must pass EntryPayloadSchema`);
+  }
+
+  const billingResult = BillingConfigPayloadSchema.safeParse(INITIAL_BILLING_CONFIG);
+  assert.ok(billingResult.success, 'Initial billing config must be valid');
+  const billingEntryResult = EntryPayloadSchema.safeParse(INITIAL_BILLING_CONFIG);
+  assert.ok(billingEntryResult.success, 'Initial billing config must pass EntryPayloadSchema');
 });
+
+test('AttendancePayloadSchema validates session attendance and chargeable lesson tracking', () => {
+  const validSession = {
+    id: 'att-test-1',
+    kind: 'attendance',
+    date: '2026-11-02',
+    topic: 'Sensory Detail Workshop',
+    durationMinutes: 60,
+    records: [
+      {
+        studentId: 'hajun',
+        studentName: 'Hajun',
+        status: 'present',
+        chargeable: true,
+        note: 'Participated actively',
+      },
+      {
+        studentId: 'mark',
+        studentName: 'Mark',
+        status: 'late',
+        chargeable: true,
+      },
+      {
+        studentId: 'juwon',
+        studentName: 'Juwon',
+        status: 'absent',
+        chargeable: false,
+        note: 'Excused',
+      },
+    ],
+  };
+  const result = AttendancePayloadSchema.safeParse(validSession);
+  assert.ok(result.success);
+  if (result.success) {
+    assert.strictEqual(result.data.records.length, 3);
+    assert.strictEqual(result.data.records.filter((r) => r.chargeable).length, 2);
+  }
+
+  // Invalid session without topic or records
+  const invalidSession = {
+    id: 'att-invalid',
+    kind: 'attendance',
+    date: '2026-11-02',
+    records: 'not an array',
+  };
+  assert.strictEqual(AttendancePayloadSchema.safeParse(invalidSession).success, false);
+});
+
+test('BillingConfigPayloadSchema validates default rates and student profiles', () => {
+  const config = {
+    id: 'billing_global',
+    kind: 'billing_config',
+    defaultRate: 45,
+    currency: '₩',
+    profiles: {
+      hajun: {
+        studentId: 'hajun',
+        ratePerLesson: 50,
+        paidLessonsCount: 4,
+      },
+    },
+  };
+  const result = BillingConfigPayloadSchema.safeParse(config);
+  assert.ok(result.success);
+  if (result.success) {
+    assert.strictEqual(result.data.defaultRate, 45);
+    assert.strictEqual(result.data.currency, '₩');
+    assert.strictEqual(result.data.profiles.hajun.paidLessonsCount, 4);
+  }
+});
+

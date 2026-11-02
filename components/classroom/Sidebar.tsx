@@ -1,7 +1,14 @@
 'use client';
 
 import React from 'react';
-import { Home, NotebookPen, FolderOpen, MessageCircle, Compass } from 'lucide-react';
+import {
+  Home,
+  NotebookPen,
+  FolderOpen,
+  MessageCircle,
+  Compass,
+  CalendarCheck,
+} from 'lucide-react';
 import type { Role, Student } from '../../lib/types';
 
 interface SidebarProps {
@@ -26,10 +33,12 @@ export function Sidebar({
   const navItems = [
     { name: 'Home', icon: Home },
     { name: 'Homework', icon: NotebookPen },
+    { name: 'Attendance', icon: CalendarCheck },
     { name: 'Roadmap', icon: Compass },
     { name: 'Materials', icon: FolderOpen },
     { name: 'Messages', icon: MessageCircle },
   ] as const;
+
 
   return (
     <aside className="sidebar">
