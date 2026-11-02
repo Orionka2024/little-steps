@@ -157,7 +157,8 @@ export const AttendancePayloadSchema = z.object({
   topic: z.string().max(200).optional().default('Lesson'),
   durationMinutes: z.number().int().positive().optional().default(60),
   records: z.array(StudentAttendanceRecordSchema),
-  ratePerLesson: z.number().positive().optional().default(250),
+  ratePerLesson: z.number().positive().optional().default(800),
+  paid: z.boolean().optional().default(false),
   notes: z.string().max(1000).optional(),
   localId: z.string().optional(),
 });
@@ -172,7 +173,7 @@ export const StudentBillingProfileSchema = z.object({
 export const BillingConfigPayloadSchema = z.object({
   id: z.string().min(1),
   kind: z.literal('billing_config'),
-  defaultRate: z.number().positive().default(250),
+  defaultRate: z.number().positive().default(800),
   currency: z.string().min(1).max(10).default('CZK'),
   profiles: z.record(StudentBillingProfileSchema).default({}),
   localId: z.string().optional(),

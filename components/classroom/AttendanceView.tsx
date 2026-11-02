@@ -10,6 +10,7 @@ import {
   Calendar,
   CheckCircle2,
   Clock,
+  Users,
 } from 'lucide-react';
 import type {
   Role,
@@ -25,7 +26,7 @@ interface AttendanceViewProps {
   attendanceList: AttendanceEntry[];
   billingConfig: BillingConfigEntry;
   onSaveAttendance: (entry: AttendanceEntry) => Promise<void>;
-  onSaveAttendanceBatch?: (entries: AttendanceEntry[], studentId?: string) => Promise<void>;
+  onSaveAttendanceBatch?: (entries: AttendanceEntry[], label?: string) => Promise<void>;
   onDeleteAttendance: (id: string) => Promise<void>;
   onSaveBillingConfig: (config: BillingConfigEntry) => Promise<void>;
   busy?: boolean;
@@ -41,7 +42,8 @@ export function AttendanceView({
   onDeleteAttendance,
   busy = false,
 }: AttendanceViewProps) {
-  const rate = billingConfig.defaultRate || 250;
+  // Flat rate per lesson: 800 CZK regardless of how many kids attend
+  const rate = billingConfig.defaultRate || 800;
   const currency = billingConfig.currency || 'CZK';
 
   // Inline "New Lesson" date and student presence
@@ -54,7 +56,7 @@ export function AttendanceView({
     return init;
   });
 
-  const [copiedStudentId, setCopiedStudentId] = useState<string | null>(null);
+  const [copiedSummary, setCopiedSummary] = useState<boolean>(false);
 
   // Sort sessions newest first
   const sortedSessions = useMemo(() => {
@@ -63,54 +65,50 @@ export function AttendanceView({
     );
   }, [attendanceList]);
 
-  // Per-student summary: attended count, paid count, unpaid count, balance due
-  const studentTotals = useMemo(() => {
-    const map: Record<
-      string,
-      {
-        attended: number;
-        paidCount: number;
-        unpaidCount: number;
-        totalCharged: number;
-        balanceDue: number;
-        dates: { date: string; status: 'present' | 'absent' | 'late'; paid: boolean }[];
-      }
-    > = {};
+  // Determine if a session is marked paid
+  const isSessionPaid = (session: AttendanceEntry): boolean => {
+    if (typeof session.paid === 'boolean') return session.paid;
+    // Fallback for older records: consider paid if attended records are paid
+    const attendedRecs = session.records.filter((r) => r.status === 'present' || r.status === 'late');
+    if (attendedRecs.length === 0) return session.records.some((r) => r.paid);
+    return attendedRecs.every((r) => r.paid);
+  };
 
+  // Group / Overall totals:
+  // Each lesson costs `rate` (800 CZK) regardless of attendance
+  const overallTotals = useMemo(() => {
+    const totalLessons = sortedSessions.length;
+    const paidLessons = sortedSessions.filter(isSessionPaid).length;
+    const unpaidLessons = Math.max(0, totalLessons - paidLessons);
+    const totalCharged = totalLessons * rate;
+    const totalPaid = paidLessons * rate;
+    const balanceDue = unpaidLessons * rate;
+
+    return {
+      totalLessons,
+      paidLessons,
+      unpaidLessons,
+      totalCharged,
+      totalPaid,
+      balanceDue,
+    };
+  }, [sortedSessions, rate]);
+
+  // Per-student attendance stats
+  const studentStats = useMemo(() => {
+    const map: Record<string, { attended: number; totalSessions: number }> = {};
     for (const s of STUDENTS) {
       let attended = 0;
-      let paidCount = 0;
-      const dates: { date: string; status: 'present' | 'absent' | 'late'; paid: boolean }[] = [];
-
       for (const session of sortedSessions) {
         const rec = session.records.find((r) => r.studentId === s.id);
-        if (rec) {
-          const isPresent = rec.status === 'present' || rec.status === 'late';
-          const isPaid = !!rec.paid;
-          dates.push({ date: session.date, status: rec.status, paid: isPaid });
-          if (isPresent) {
-            attended += 1;
-            if (isPaid) paidCount += 1;
-          }
+        if (rec && (rec.status === 'present' || rec.status === 'late')) {
+          attended += 1;
         }
       }
-
-      const unpaidCount = Math.max(0, attended - paidCount);
-      const totalCharged = attended * rate;
-      const balanceDue = unpaidCount * rate;
-
-      map[s.id] = {
-        attended,
-        paidCount,
-        unpaidCount,
-        totalCharged,
-        balanceDue,
-        dates,
-      };
+      map[s.id] = { attended, totalSessions: sortedSessions.length };
     }
-
     return map;
-  }, [sortedSessions, rate]);
+  }, [sortedSessions]);
 
   // Add a new lesson session
   async function handleAddLesson(e: React.FormEvent) {
@@ -121,14 +119,13 @@ export function AttendanceView({
     const existing = sortedSessions.find((s) => s.date === newDate);
 
     const records = STUDENTS.map((s) => {
-      const existingRec = existing?.records.find((r) => r.studentId === s.id);
       const isPresent = !!presentMap[s.id];
       return {
         studentId: s.id,
         studentName: s.name,
         status: (isPresent ? 'present' : 'absent') as 'present' | 'absent',
         chargeable: isPresent,
-        paid: isPresent ? (existingRec?.paid ?? false) : false,
+        paid: existing ? isSessionPaid(existing) : false,
       };
     });
 
@@ -138,6 +135,7 @@ export function AttendanceView({
       date: newDate,
       topic: existing?.topic || `Lesson on ${newDate}`,
       ratePerLesson: rate,
+      paid: existing ? isSessionPaid(existing) : false,
       records,
     };
 
@@ -164,7 +162,6 @@ export function AttendanceView({
           ...r,
           status: nextStatus,
           chargeable: nextStatus === 'present',
-          paid: nextStatus === 'present' ? r.paid : false,
         };
       }
       return r;
@@ -176,44 +173,35 @@ export function AttendanceView({
     });
   }
 
-  // Toggle paid / unpaid on an existing date row
-  async function toggleStudentPaid(session: AttendanceEntry, studentId: string) {
+  // Toggle paid / unpaid on an existing lesson (800 CZK)
+  async function toggleSessionPaid(session: AttendanceEntry) {
     if (role !== 'Teacher') return;
-    const rec = session.records.find((r) => r.studentId === studentId);
-    if (!rec || rec.status !== 'present') return;
+    const currentPaid = isSessionPaid(session);
+    const nextPaid = !currentPaid;
 
-    const nextPaid = !rec.paid;
-
-    const updatedRecords = session.records.map((r) => {
-      if (r.studentId === studentId) {
-        return {
-          ...r,
-          paid: nextPaid,
-        };
-      }
-      return r;
-    });
+    const updatedRecords = session.records.map((r) => ({
+      ...r,
+      paid: nextPaid,
+    }));
 
     await onSaveAttendance({
       ...session,
+      paid: nextPaid,
       records: updatedRecords,
     });
   }
 
-  // Mark all attended sessions as paid for a student
-  async function handleMarkAllPaid(studentId: string) {
+  // Mark all attended sessions as paid
+  async function handleMarkAllLessonsPaid() {
     if (role !== 'Teacher') return;
 
     const toUpdate: AttendanceEntry[] = [];
     for (const session of sortedSessions) {
-      const rec = session.records.find((r) => r.studentId === studentId);
-      if (rec && rec.status === 'present' && !rec.paid) {
-        const updatedRecords = session.records.map((r) => {
-          if (r.studentId === studentId) return { ...r, paid: true };
-          return r;
-        });
+      if (!isSessionPaid(session)) {
+        const updatedRecords = session.records.map((r) => ({ ...r, paid: true }));
         toUpdate.push({
           ...session,
+          paid: true,
           records: updatedRecords,
         });
       }
@@ -222,7 +210,7 @@ export function AttendanceView({
     if (toUpdate.length === 0) return;
 
     if (onSaveAttendanceBatch) {
-      await onSaveAttendanceBatch(toUpdate, studentId);
+      await onSaveAttendanceBatch(toUpdate, 'all');
     } else {
       for (const item of toUpdate) {
         await onSaveAttendance(item);
@@ -230,30 +218,46 @@ export function AttendanceView({
     }
   }
 
-  // Copy quick invoice statement
-  function handleCopyInvoice(student: Student) {
-    const t = studentTotals[student.id];
-    if (!t) return;
+  // Copy quick invoice statement for parents
+  function handleCopyInvoice() {
+    const lines: string[] = [
+      `📋 Little Steps · Lesson Attendance & Payments`,
+      `Rate: ${rate} ${currency} / lesson (flat group fee · does not matter how many kids attend)`,
+      `Total Lessons: ${overallTotals.totalLessons} (${overallTotals.totalCharged.toLocaleString()} ${currency})`,
+      `Paid Lessons:  ${overallTotals.paidLessons} (${overallTotals.totalPaid.toLocaleString()} ${currency})`,
+      `Outstanding Balance: ${overallTotals.balanceDue.toLocaleString()} ${currency} (${overallTotals.unpaidLessons} unpaid ${overallTotals.unpaidLessons === 1 ? 'lesson' : 'lessons'})`,
+      ``,
+      `Student Attendance:`,
+      ...STUDENTS.map((s) => {
+        const stats = studentStats[s.id];
+        return `  • ${s.name}: ${stats?.attended || 0}/${stats?.totalSessions || 0} lessons attended`;
+      }),
+      ``,
+      `Lesson Dates:`,
+      ...sortedSessions.map((session) => {
+        const paid = isSessionPaid(session);
+        const presentNames = session.records
+          .filter((r) => r.status === 'present' || r.status === 'late')
+          .map((r) => r.studentName);
+        const absentNames = session.records
+          .filter((r) => r.status === 'absent')
+          .map((r) => r.studentName);
 
-    const dateList = t.dates
-      .filter((d) => d.status === 'present')
-      .map((d) => `  • ${d.date}: Present · 250 CZK [${d.paid ? 'PAID ✓' : 'UNPAID'}]`)
-      .join('\n');
+        const attendanceSummary =
+          presentNames.length === STUDENTS.length
+            ? 'All present'
+            : presentNames.length > 0
+            ? `Present: ${presentNames.join(', ')}${absentNames.length > 0 ? ` (Absent: ${absentNames.join(', ')})` : ''}`
+            : 'No students present';
 
-    const text = `📋 Little Steps · Lesson Attendance
-Student: ${student.name}
-Rate: 250 CZK / lesson
-Lessons Attended: ${t.attended} (${t.totalCharged.toLocaleString()} CZK)
-Lessons Paid:     ${t.paidCount}
+        return `  • ${session.date}: ${attendanceSummary} · ${rate} ${currency} [${paid ? 'PAID ✓' : 'UNPAID'}]`;
+      }),
+    ];
 
-Dates:
-${dateList || '  • No recorded sessions'}
-
-Outstanding Due: ${t.balanceDue.toLocaleString()} CZK (${t.unpaidCount} unpaid ${t.unpaidCount === 1 ? 'lesson' : 'lessons'})`;
-
+    const text = lines.join('\n');
     navigator.clipboard.writeText(text).then(() => {
-      setCopiedStudentId(student.id);
-      setTimeout(() => setCopiedStudentId(null), 3000);
+      setCopiedSummary(true);
+      setTimeout(() => setCopiedSummary(false), 3000);
     });
   }
 
@@ -270,123 +274,209 @@ Outstanding Due: ${t.balanceDue.toLocaleString()} CZK (${t.unpaidCount} unpaid $
         </h1>
         <p style={{ color: '#6d7f6c', fontSize: '13px' }}>
           {role === 'Teacher'
-            ? 'Tick who is present for each lesson date, then mark paid when payment is received. (250 CZK per student)'
+            ? 'Tick who is present for each lesson date, then mark paid when payment is received. (800 CZK flat per lesson — does not matter how many kids attend)'
             : 'Review the lessons you attended and payment status.'}
         </p>
       </div>
 
-      {/* Top Student Balance Cards */}
+      {/* Top Overview Cards */}
       <div
         style={{
           display: 'grid',
-          gridTemplateColumns: role === 'Student' ? '1fr' : 'repeat(auto-fit, minmax(280px, 1fr))',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
           gap: '14px',
           marginBottom: '24px',
         }}
       >
-        {STUDENTS.filter((st) => (role === 'Student' ? st.id === currentStudent.id : true)).map((st) => {
-          const t = studentTotals[st.id] || { attended: 0, paidCount: 0, unpaidCount: 0, totalCharged: 0, balanceDue: 0 };
-          const isCopied = copiedStudentId === st.id;
+        {/* Card 1: Balance & Payment Status */}
+        <div
+          style={{
+            background: '#fff',
+            border: '1px solid #e1e7dc',
+            borderRadius: '12px',
+            padding: '16px 18px',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '12px',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div>
+              <div style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.04em', color: '#7a8e7a', fontWeight: 700 }}>
+                Group Balance
+              </div>
+              <strong style={{ fontSize: '20px', color: '#273f3b', marginTop: '2px', display: 'block' }}>
+                {overallTotals.balanceDue > 0
+                  ? `${overallTotals.balanceDue.toLocaleString()} ${currency} Due`
+                  : 'All Lessons Paid'}
+              </strong>
+            </div>
 
-          return (
-            <div
-              key={st.id}
+            <span
               style={{
-                background: '#fff',
-                border: '1px solid #e1e7dc',
-                borderRadius: '12px',
-                padding: '16px 18px',
-                display: 'flex',
-                flexDirection: 'column',
-                gap: '12px',
+                padding: '4px 10px',
+                borderRadius: '20px',
+                fontSize: '11px',
+                fontWeight: 700,
+                background: overallTotals.balanceDue > 0 ? '#fff3d9' : '#eaf4e8',
+                color: overallTotals.balanceDue > 0 ? '#8a6523' : '#356330',
+                border: `1px solid ${overallTotals.balanceDue > 0 ? '#f0ddb0' : '#cbe4c5'}`,
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '4px',
               }}
             >
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                  <div className="avatar tiny" style={{ fontSize: '13px' }}>
-                    {st.avatar}
-                  </div>
-                  <div>
-                    <strong style={{ fontSize: '15px' }}>{st.name}</strong>
-                    <div style={{ fontSize: '11px', color: '#7a8e7a' }}>
-                      {t.attended} {t.attended === 1 ? 'lesson' : 'lessons'} attended
-                    </div>
-                  </div>
-                </div>
+              {overallTotals.balanceDue > 0 ? (
+                <>
+                  <Clock size={12} />
+                  {overallTotals.unpaidLessons} unpaid {overallTotals.unpaidLessons === 1 ? 'lesson' : 'lessons'}
+                </>
+              ) : (
+                <>
+                  <CheckCircle2 size={12} />
+                  Up to date
+                </>
+              )}
+            </span>
+          </div>
 
-                {/* Balance badge */}
-                <span
+          <div style={{ fontSize: '12px', color: '#6d7f6c' }}>
+            <strong>{overallTotals.paidLessons}</strong> of <strong>{overallTotals.totalLessons}</strong> lessons paid
+            {' '}· Total: {overallTotals.totalCharged.toLocaleString()} {currency}
+          </div>
+
+          {role === 'Teacher' && overallTotals.unpaidLessons > 0 && (
+            <div style={{ marginTop: 'auto', paddingTop: '4px' }}>
+              <button
+                className="text-button"
+                onClick={handleMarkAllLessonsPaid}
+                disabled={busy}
+                style={{
+                  background: '#eef6ec',
+                  border: '1px solid #cce4c8',
+                  padding: '6px 12px',
+                  borderRadius: '6px',
+                  fontSize: '11px',
+                  color: '#286654',
+                  fontWeight: 600,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                }}
+              >
+                <Check size={12} />
+                Mark all lessons as paid
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* Card 2: Student Attendance Overview */}
+        <div
+          style={{
+            background: '#fff',
+            border: '1px solid #e1e7dc',
+            borderRadius: '12px',
+            padding: '16px 18px',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '10px',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <Users size={14} style={{ color: '#286654' }} />
+            <span style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.04em', color: '#7a8e7a', fontWeight: 700 }}>
+              Student Attendance
+            </span>
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '2px' }}>
+            {STUDENTS.map((st) => {
+              const stats = studentStats[st.id] || { attended: 0, totalSessions: 0 };
+              const percent = stats.totalSessions > 0 ? Math.round((stats.attended / stats.totalSessions) * 100) : 100;
+
+              return (
+                <div
+                  key={st.id}
                   style={{
-                    padding: '4px 10px',
-                    borderRadius: '20px',
-                    fontSize: '11px',
-                    fontWeight: 700,
-                    background: t.balanceDue > 0 ? '#fff3d9' : '#eaf4e8',
-                    color: t.balanceDue > 0 ? '#8a6523' : '#356330',
-                    border: `1px solid ${t.balanceDue > 0 ? '#f0ddb0' : '#cbe4c5'}`,
-                    display: 'inline-flex',
+                    display: 'flex',
                     alignItems: 'center',
-                    gap: '4px',
+                    justifyContent: 'space-between',
+                    padding: '4px 0',
+                    borderBottom: '1px dashed #f0f4ee',
                   }}
                 >
-                  {t.balanceDue > 0 ? (
-                    <>
-                      <Clock size={12} />
-                      Unpaid: {t.balanceDue.toLocaleString()} {currency} ({t.unpaidCount})
-                    </>
-                  ) : (
-                    <>
-                      <CheckCircle2 size={12} />
-                      All Paid
-                    </>
-                  )}
-                </span>
-              </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <div className="avatar tiny" style={{ fontSize: '11px', width: '22px', height: '22px' }}>
+                      {st.avatar}
+                    </div>
+                    <strong style={{ fontSize: '13px', color: '#334739' }}>{st.name}</strong>
+                  </div>
 
-              {/* Actions */}
-              <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginTop: 'auto', paddingTop: '4px' }}>
-                {role === 'Teacher' && t.unpaidCount > 0 && (
-                  <button
-                    className="text-button"
-                    onClick={() => handleMarkAllPaid(st.id)}
-                    disabled={busy}
+                  <span
                     style={{
-                      background: '#eef6ec',
-                      border: '1px solid #cce4c8',
-                      padding: '5px 10px',
-                      borderRadius: '6px',
                       fontSize: '11px',
-                      color: '#286654',
                       fontWeight: 600,
+                      color: percent === 100 ? '#286654' : '#6d7f6c',
+                      background: percent === 100 ? '#eaf4e8' : '#f5f7f3',
+                      padding: '2px 8px',
+                      borderRadius: '12px',
                     }}
                   >
-                    ✓ Mark all paid
-                  </button>
-                )}
+                    {stats.attended}/{stats.totalSessions} attended ({percent}%)
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
 
-                <button
-                  className="text-button"
-                  onClick={() => handleCopyInvoice(st)}
-                  style={{
-                    marginLeft: 'auto',
-                    border: '1px solid #dce4d5',
-                    padding: '5px 10px',
-                    borderRadius: '6px',
-                    fontSize: '11px',
-                    background: isCopied ? '#e9f4e6' : '#fff',
-                    color: isCopied ? '#286654' : '#55695b',
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: '4px',
-                  }}
-                >
-                  {isCopied ? <Check size={12} /> : <Copy size={12} />}
-                  {isCopied ? 'Copied!' : 'Copy Summary'}
-                </button>
-              </div>
+        {/* Card 3: Pricing & Share Statement */}
+        <div
+          style={{
+            background: '#fff',
+            border: '1px solid #e1e7dc',
+            borderRadius: '12px',
+            padding: '16px 18px',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '12px',
+          }}
+        >
+          <div>
+            <div style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.04em', color: '#7a8e7a', fontWeight: 700 }}>
+              Lesson Rate
             </div>
-          );
-        })}
+            <strong style={{ fontSize: '20px', color: '#273f3b', marginTop: '2px', display: 'block' }}>
+              {rate} {currency} <span style={{ fontSize: '12px', fontWeight: 500, color: '#7a8e7a' }}>/ lesson</span>
+            </strong>
+            <p style={{ fontSize: '12px', color: '#6d7f6c', margin: '4px 0 0' }}>
+              Flat group fee — does not matter how many kids attend.
+            </p>
+          </div>
+
+          <div style={{ marginTop: 'auto', paddingTop: '4px' }}>
+            <button
+              className="text-button"
+              onClick={handleCopyInvoice}
+              style={{
+                border: '1px solid #dce4d5',
+                padding: '6px 12px',
+                borderRadius: '6px',
+                fontSize: '11px',
+                background: copiedSummary ? '#e9f4e6' : '#fff',
+                color: copiedSummary ? '#286654' : '#55695b',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                fontWeight: 600,
+              }}
+            >
+              {copiedSummary ? <Check size={12} /> : <Copy size={12} />}
+              {copiedSummary ? 'Statement Copied!' : 'Copy Summary for Parents'}
+            </button>
+          </div>
+        </div>
       </div>
 
       {/* Teacher: Quick 1-Step Add Lesson Form */}
@@ -472,7 +562,7 @@ Outstanding Due: ${t.balanceDue.toLocaleString()} CZK (${t.unpaidCount} unpaid $
             }}
           >
             <Plus size={14} />
-            + Record Lesson
+            + Record Lesson ({rate} {currency})
           </button>
         </form>
       )}
@@ -490,7 +580,7 @@ Outstanding Due: ${t.balanceDue.toLocaleString()} CZK (${t.unpaidCount} unpaid $
         >
           <strong style={{ fontSize: '14px', color: '#273f3b' }}>Attendance & Payment History</strong>
           <span style={{ fontSize: '11px', color: '#7a8c79' }}>
-            {sortedSessions.length} {sortedSessions.length === 1 ? 'lesson date' : 'lesson dates'} logged
+            {sortedSessions.length} {sortedSessions.length === 1 ? 'lesson date' : 'lesson dates'} logged · {rate} {currency} flat / lesson
           </span>
         </div>
 
@@ -508,6 +598,8 @@ Outstanding Due: ${t.balanceDue.toLocaleString()} CZK (${t.unpaidCount} unpaid $
                 day: 'numeric',
                 year: 'numeric',
               });
+
+              const paid = isSessionPaid(session);
 
               return (
                 <div
@@ -532,100 +624,103 @@ Outstanding Due: ${t.balanceDue.toLocaleString()} CZK (${t.unpaidCount} unpaid $
                     </span>
                   </div>
 
-                  {/* Student Attendance & Payment Controls */}
-                  <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', flex: 1, justifyContent: 'flex-start' }}>
+                  {/* Student Attendance Ticks (Who is present) */}
+                  <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', flex: 1, alignItems: 'center' }}>
+                    <span style={{ fontSize: '11px', color: '#7a8c79', fontWeight: 600, marginRight: '4px' }}>
+                      Attendance:
+                    </span>
                     {session.records
                       .filter((rec) => (role === 'Student' ? rec.studentId === currentStudent.id : true))
                       .map((rec) => {
-                        const isPresent = rec.status === 'present';
-                        const isPaid = !!rec.paid;
+                        const isPresent = rec.status === 'present' || rec.status === 'late';
 
                         return (
-                          <div
+                          <button
                             key={rec.studentId}
+                            type="button"
+                            onClick={() => toggleStudentPresence(session, rec.studentId)}
+                            disabled={role !== 'Teacher' || busy}
                             style={{
+                              padding: '4px 10px',
+                              borderRadius: '6px',
+                              fontSize: '11px',
+                              fontWeight: 700,
+                              background: isPresent ? '#e8f3e5' : '#f5f5f3',
+                              color: isPresent ? '#286654' : '#8c958a',
+                              border: `1px solid ${isPresent ? '#b6deb0' : '#d8dad4'}`,
+                              cursor: role === 'Teacher' ? 'pointer' : 'default',
                               display: 'inline-flex',
                               alignItems: 'center',
-                              gap: '6px',
-                              background: '#f8faf7',
-                              border: '1px solid #e2e8de',
-                              padding: '5px 8px',
-                              borderRadius: '8px',
+                              gap: '4px',
                             }}
+                            title={role === 'Teacher' ? `Click to toggle ${rec.studentName} present / absent` : undefined}
                           >
-                            <span style={{ fontSize: '12px', fontWeight: 600, color: '#334739', minWidth: '45px' }}>
-                              {rec.studentName}:
-                            </span>
-
-                            {/* Present / Absent button */}
-                            <button
-                              type="button"
-                              onClick={() => toggleStudentPresence(session, rec.studentId)}
-                              disabled={role !== 'Teacher' || busy}
-                              style={{
-                                padding: '3px 8px',
-                                borderRadius: '5px',
-                                fontSize: '11px',
-                                fontWeight: 700,
-                                background: isPresent ? '#e8f3e5' : '#f5f5f3',
-                                color: isPresent ? '#286654' : '#8c958a',
-                                border: `1px solid ${isPresent ? '#b6deb0' : '#d8dad4'}`,
-                                cursor: role === 'Teacher' ? 'pointer' : 'default',
-                              }}
-                              title={role === 'Teacher' ? 'Click to toggle Present / Absent' : undefined}
-                            >
-                              {isPresent ? '✓ Present' : '✕ Absent'}
-                            </button>
-
-                            {/* Paid / Unpaid button (only shown if present) */}
-                            {isPresent && (
-                              <button
-                                type="button"
-                                onClick={() => toggleStudentPaid(session, rec.studentId)}
-                                disabled={role !== 'Teacher' || busy}
-                                style={{
-                                  padding: '3px 8px',
-                                  borderRadius: '5px',
-                                  fontSize: '11px',
-                                  fontWeight: 700,
-                                  background: isPaid ? '#286654' : '#fff4db',
-                                  color: isPaid ? '#fff' : '#8e6c27',
-                                  border: `1px solid ${isPaid ? '#286654' : '#ebd196'}`,
-                                  cursor: role === 'Teacher' ? 'pointer' : 'default',
-                                }}
-                                title={role === 'Teacher' ? 'Click to toggle Paid / Unpaid' : undefined}
-                              >
-                                {isPaid ? '✓ Paid' : `Unpaid (${rate} ${currency})`}
-                              </button>
-                            )}
-                          </div>
+                            <span>{rec.studentName}:</span>
+                            <span>{isPresent ? '✓ Present' : '✕ Absent'}</span>
+                          </button>
                         );
                       })}
                   </div>
 
-                  {/* Delete Date Button (Teacher only) */}
-                  {role === 'Teacher' && (
+                  {/* Single Lesson Fee & Payment Button (800 CZK) */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                     <button
                       type="button"
-                      className="text-button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        if (confirm(`Delete the lesson date for ${formattedDate}?`)) {
-                          onDeleteAttendance(session.id);
-                        }
-                      }}
-                      disabled={busy}
+                      onClick={() => toggleSessionPaid(session)}
+                      disabled={role !== 'Teacher' || busy}
                       style={{
-                        padding: '4px 8px',
-                        color: '#b05252',
-                        fontSize: '11px',
+                        padding: '5px 12px',
                         borderRadius: '6px',
+                        fontSize: '11px',
+                        fontWeight: 700,
+                        background: paid ? '#286654' : '#fff4db',
+                        color: paid ? '#fff' : '#8e6c27',
+                        border: `1px solid ${paid ? '#286654' : '#ebd196'}`,
+                        cursor: role === 'Teacher' ? 'pointer' : 'default',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        transition: 'all 0.15s ease',
                       }}
-                      title="Delete this date"
+                      title={role === 'Teacher' ? 'Click to toggle Paid / Unpaid for this lesson' : undefined}
                     >
-                      <Trash2 size={13} />
+                      {paid ? (
+                        <>
+                          <Check size={12} />
+                          ✓ Paid · {rate} {currency}
+                        </>
+                      ) : (
+                        <>
+                          <Clock size={12} />
+                          Unpaid ({rate} {currency})
+                        </>
+                      )}
                     </button>
-                  )}
+
+                    {/* Delete Date Button (Teacher only) */}
+                    {role === 'Teacher' && (
+                      <button
+                        type="button"
+                        className="text-button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (confirm(`Delete the lesson date for ${formattedDate}?`)) {
+                            onDeleteAttendance(session.id);
+                          }
+                        }}
+                        disabled={busy}
+                        style={{
+                          padding: '4px 8px',
+                          color: '#b05252',
+                          fontSize: '11px',
+                          borderRadius: '6px',
+                        }}
+                        title="Delete this date"
+                      >
+                        <Trash2 size={13} />
+                      </button>
+                    )}
+                  </div>
                 </div>
               );
             })}

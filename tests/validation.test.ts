@@ -369,7 +369,8 @@ test('upsertStoredRecords and batch attendance entries are safely validated and 
       kind: 'attendance',
       date: '2026-11-09',
       topic: 'Lesson 5',
-      ratePerLesson: 250,
+      ratePerLesson: 800,
+      paid: true,
       records: [
         { studentId: 'hajun', studentName: 'Hajun', status: 'present', chargeable: true, paid: true },
         { studentId: 'mark', studentName: 'Mark', status: 'present', chargeable: true, paid: true },
@@ -381,7 +382,8 @@ test('upsertStoredRecords and batch attendance entries are safely validated and 
       kind: 'attendance',
       date: '2026-11-16',
       topic: 'Lesson 6',
-      ratePerLesson: 250,
+      ratePerLesson: 800,
+      paid: false,
       records: [
         { studentId: 'hajun', studentName: 'Hajun', status: 'present', chargeable: true, paid: false },
         { studentId: 'mark', studentName: 'Mark', status: 'present', chargeable: true, paid: false },
@@ -411,7 +413,7 @@ test('upsertStoredRecords and batch attendance entries are safely validated and 
 
   assert.ok(found1, 'att-batch-1 should be stored');
   assert.ok(found2, 'att-batch-2 should be stored');
-  assert.strictEqual((found1 as { ratePerLesson?: number }).ratePerLesson, 250);
+  assert.strictEqual((found1 as { ratePerLesson?: number }).ratePerLesson, 800);
 });
 
 

@@ -198,6 +198,7 @@ export interface AttendanceEntry {
   durationMinutes?: number;
   records: StudentAttendanceRecord[];
   ratePerLesson?: number;
+  paid?: boolean;
   notes?: string;
   localId?: string;
 }

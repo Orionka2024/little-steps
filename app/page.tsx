@@ -653,15 +653,18 @@ export default function App() {
     });
   };
 
-  const handleSaveAttendanceBatch = async (entries: AttendanceEntry[], studentId?: string) => {
+  const handleSaveAttendanceBatch = async (entries: AttendanceEntry[], label?: string) => {
     await action(async () => {
       await saveEntries(entries);
-      const studentName = studentId
-        ? STUDENTS.find((s) => s.id === studentId)?.name || studentId
-        : 'student';
-      setToast(
-        `Marked ${entries.length} lesson${entries.length > 1 ? 's' : ''} as paid for ${studentName}.`
-      );
+      const studentName = label && label !== 'all'
+        ? STUDENTS.find((s) => s.id === label)?.name || label
+        : null;
+      if (studentName) {
+        setToast(`Marked ${entries.length} lesson${entries.length > 1 ? 's' : ''} as paid for ${studentName}.`);
+      } else {
+        const totalAmount = entries.length * (billingConfig.defaultRate || 800);
+        setToast(`Marked ${entries.length} lesson${entries.length > 1 ? 's' : ''} as paid (${totalAmount.toLocaleString()} CZK).`);
+      }
     });
   };
 
