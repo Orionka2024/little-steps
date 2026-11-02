@@ -146,6 +146,7 @@ export const StudentAttendanceRecordSchema = z.object({
   studentName: z.string().min(1),
   status: z.enum(['present', 'absent', 'late']),
   chargeable: z.boolean().default(true),
+  paid: z.boolean().optional().default(false),
   note: z.string().max(500).optional(),
 });
 
@@ -153,10 +154,10 @@ export const AttendancePayloadSchema = z.object({
   id: z.string().min(1),
   kind: z.literal('attendance'),
   date: z.string().min(1),
-  topic: z.string().min(1).max(200),
+  topic: z.string().max(200).optional().default('Lesson'),
   durationMinutes: z.number().int().positive().optional().default(60),
   records: z.array(StudentAttendanceRecordSchema),
-  ratePerLesson: z.number().positive().optional(),
+  ratePerLesson: z.number().positive().optional().default(250),
   notes: z.string().max(1000).optional(),
   localId: z.string().optional(),
 });

@@ -180,6 +180,7 @@ export interface StudentAttendanceRecord {
   studentName: string;
   status: AttendanceStatus;
   chargeable: boolean;
+  paid?: boolean;
   note?: string;
 }
 
@@ -187,7 +188,7 @@ export interface AttendanceEntry {
   id: string;
   kind: 'attendance';
   date: string;
-  topic: string;
+  topic?: string;
   durationMinutes?: number;
   records: StudentAttendanceRecord[];
   ratePerLesson?: number;
