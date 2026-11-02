@@ -176,6 +176,39 @@ export async function upsertStoredRecord(
   saveRecordsToDisk(records);
 }
 
+export async function upsertStoredRecords(
+  items: { id: string; owner: string; kind: string; data: Record<string, unknown> }[]
+): Promise<void> {
+  if (items.length === 0) return;
+  const records = loadRecordsFromDisk();
+  for (const item of items) {
+    const key = item.id.includes(':') ? item.id : `${item.owner}:${item.id}`;
+    const payloadToStore = JSON.stringify({
+      ...item.data,
+      localId: item.id,
+    });
+
+    const existingIdx = records.findIndex((r) => r.id === key);
+    if (existingIdx >= 0) {
+      records[existingIdx] = {
+        id: key,
+        owner: item.owner,
+        kind: item.kind,
+        payload: payloadToStore,
+      };
+    } else {
+      records.push({
+        id: key,
+        owner: item.owner,
+        kind: item.kind,
+        payload: payloadToStore,
+      });
+    }
+  }
+  saveRecordsToDisk(records);
+}
+
+
 export async function deleteStoredRecord(
   id: string,
   owner = 'local_seedy'

@@ -25,6 +25,7 @@ interface AttendanceViewProps {
   attendanceList: AttendanceEntry[];
   billingConfig: BillingConfigEntry;
   onSaveAttendance: (entry: AttendanceEntry) => Promise<void>;
+  onSaveAttendanceBatch?: (entries: AttendanceEntry[], studentId?: string) => Promise<void>;
   onDeleteAttendance: (id: string) => Promise<void>;
   onSaveBillingConfig: (config: BillingConfigEntry) => Promise<void>;
   busy?: boolean;
@@ -36,6 +37,7 @@ export function AttendanceView({
   attendanceList,
   billingConfig,
   onSaveAttendance,
+  onSaveAttendanceBatch,
   onDeleteAttendance,
   busy = false,
 }: AttendanceViewProps) {
@@ -115,26 +117,33 @@ export function AttendanceView({
     e.preventDefault();
     if (!newDate) return;
 
-    const records = STUDENTS.map((s) => ({
-      studentId: s.id,
-      studentName: s.name,
-      status: (presentMap[s.id] ? 'present' : 'absent') as 'present' | 'absent',
-      chargeable: presentMap[s.id],
-      paid: false,
-    }));
+    // Check if session for this date already exists
+    const existing = sortedSessions.find((s) => s.date === newDate);
+
+    const records = STUDENTS.map((s) => {
+      const existingRec = existing?.records.find((r) => r.studentId === s.id);
+      const isPresent = !!presentMap[s.id];
+      return {
+        studentId: s.id,
+        studentName: s.name,
+        status: (isPresent ? 'present' : 'absent') as 'present' | 'absent',
+        chargeable: isPresent,
+        paid: isPresent ? (existingRec?.paid ?? false) : false,
+      };
+    });
 
     const entry: AttendanceEntry = {
-      id: `att-${Date.now()}`,
+      id: existing ? existing.id : `att-${newDate}`,
       kind: 'attendance',
       date: newDate,
-      topic: `Lesson on ${newDate}`,
+      topic: existing?.topic || `Lesson on ${newDate}`,
       ratePerLesson: rate,
       records,
     };
 
     await onSaveAttendance(entry);
 
-    // Keep date on today or current, reset checkboxes to all present
+    // Reset checkboxes to all present
     const reset: Record<string, boolean> = {};
     for (const s of STUDENTS) reset[s.id] = true;
     setPresentMap(reset);
@@ -195,6 +204,7 @@ export function AttendanceView({
   async function handleMarkAllPaid(studentId: string) {
     if (role !== 'Teacher') return;
 
+    const toUpdate: AttendanceEntry[] = [];
     for (const session of sortedSessions) {
       const rec = session.records.find((r) => r.studentId === studentId);
       if (rec && rec.status === 'present' && !rec.paid) {
@@ -202,10 +212,20 @@ export function AttendanceView({
           if (r.studentId === studentId) return { ...r, paid: true };
           return r;
         });
-        await onSaveAttendance({
+        toUpdate.push({
           ...session,
           records: updatedRecords,
         });
+      }
+    }
+
+    if (toUpdate.length === 0) return;
+
+    if (onSaveAttendanceBatch) {
+      await onSaveAttendanceBatch(toUpdate, studentId);
+    } else {
+      for (const item of toUpdate) {
+        await onSaveAttendance(item);
       }
     }
   }

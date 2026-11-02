@@ -360,3 +360,58 @@ test('CLASSROOM_USERS have unique and distinct passwords matching user specifica
   assert.strictEqual(CLASSROOM_USERS.find((u) => u.username === 'juwon')?.password, 'Jwn1122');
 });
 
+test('upsertStoredRecords and batch attendance entries are safely validated and persisted', async () => {
+  const { upsertStoredRecords, getStoredRecords } = await import('../lib/storage.ts');
+
+  const batchSessions = [
+    {
+      id: 'att-batch-1',
+      kind: 'attendance',
+      date: '2026-11-09',
+      topic: 'Lesson 5',
+      ratePerLesson: 250,
+      records: [
+        { studentId: 'hajun', studentName: 'Hajun', status: 'present', chargeable: true, paid: true },
+        { studentId: 'mark', studentName: 'Mark', status: 'present', chargeable: true, paid: true },
+        { studentId: 'juwon', studentName: 'Juwon', status: 'present', chargeable: true, paid: true },
+      ],
+    },
+    {
+      id: 'att-batch-2',
+      kind: 'attendance',
+      date: '2026-11-16',
+      topic: 'Lesson 6',
+      ratePerLesson: 250,
+      records: [
+        { studentId: 'hajun', studentName: 'Hajun', status: 'present', chargeable: true, paid: false },
+        { studentId: 'mark', studentName: 'Mark', status: 'present', chargeable: true, paid: false },
+        { studentId: 'juwon', studentName: 'Juwon', status: 'absent', chargeable: false, paid: false },
+      ],
+    },
+  ];
+
+  // Every item validates against EntryPayloadSchema
+  for (const session of batchSessions) {
+    const parsed = EntryPayloadSchema.safeParse(session);
+    assert.ok(parsed.success, `Failed to validate ${session.id}`);
+  }
+
+  await upsertStoredRecords(
+    batchSessions.map((b) => ({
+      id: b.id,
+      owner: 'local_seedy',
+      kind: b.kind,
+      data: b,
+    }))
+  );
+
+  const stored = await getStoredRecords('local_seedy');
+  const found1 = stored.find((s) => s.id === 'local_seedy:att-batch-1' || s.id === 'att-batch-1');
+  const found2 = stored.find((s) => s.id === 'local_seedy:att-batch-2' || s.id === 'att-batch-2');
+
+  assert.ok(found1, 'att-batch-1 should be stored');
+  assert.ok(found2, 'att-batch-2 should be stored');
+  assert.strictEqual((found1 as { ratePerLesson?: number }).ratePerLesson, 250);
+});
+
+

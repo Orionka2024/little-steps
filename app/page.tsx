@@ -66,6 +66,28 @@ function getInitialUserSession(): ClassroomUser | null {
   return null;
 }
 
+function getInitialClassroomRows(): Entry[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const cached = localStorage.getItem('classroom_saved_rows');
+    if (cached) {
+      const parsed = JSON.parse(cached);
+      if (Array.isArray(parsed)) return parsed as Entry[];
+    }
+  } catch {
+    // ignore
+  }
+  return [];
+}
+
+function persistRows(rowsToSave: Entry[]): void {
+  try {
+    localStorage.setItem('classroom_saved_rows', JSON.stringify(rowsToSave));
+  } catch {
+    // ignore
+  }
+}
+
 export default function App() {
   const [currentUser, setCurrentUser] = useState<ClassroomUser | null>(getInitialUserSession);
   const [checkingAuth, setCheckingAuth] = useState<boolean>(() => !getInitialUserSession());
@@ -80,7 +102,7 @@ export default function App() {
     return STUDENTS[0];
   });
   const [reviewingStudent, setReviewingStudent] = useState<Student>(STUDENTS[0]); // Default to Hajun
-  const [rows, setRows] = useState<Entry[]>([]);
+  const [rows, setRows] = useState<Entry[]>(getInitialClassroomRows);
   const [active, setActive] = useState<AssignmentEntry | null>(null);
   const [resource, setResource] = useState<MaterialEntry | null>(null);
   const [modal, setModal] = useState<string>('');
@@ -133,7 +155,7 @@ export default function App() {
       .finally(() => setCheckingAuth(false));
   }, [applyUserSession]);
 
-  // Fetch initial records from storage
+  // Fetch initial records from storage and merge with client cache
   useEffect(() => {
     if (!currentUser) return;
 
@@ -145,13 +167,39 @@ export default function App() {
         }
         return response.json() as Promise<Entry[]>;
       })
-      .then((data) => {
-        setRows(
-          data.map((item) => ({
-            ...item,
-            id: item.localId || item.id,
-          }))
-        );
+      .then((serverData) => {
+        const formattedServer = serverData.map((item) => ({
+          ...item,
+          id: item.localId || item.id,
+        }));
+
+        setRows((prev) => {
+          const serverMap = new Map(formattedServer.map((item) => [item.id, item]));
+          const merged = [...formattedServer];
+          const unsavedToSync: Entry[] = [];
+
+          for (const localItem of prev) {
+            if (!serverMap.has(localItem.id)) {
+              merged.push(localItem);
+              unsavedToSync.push(localItem);
+            }
+          }
+
+          persistRows(merged);
+
+          if (unsavedToSync.length > 0 && currentUser.role === 'Teacher') {
+            fetch('/api/data', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'x-user-role': currentUser.role,
+              },
+              body: JSON.stringify(unsavedToSync),
+            }).catch(() => {});
+          }
+
+          return merged;
+        });
         setLoaded(true);
       })
       .catch((err: Error) => {
@@ -217,18 +265,24 @@ export default function App() {
         .map((r) => r.targetId)
     );
     const custom = rows.filter(isAttendance).filter((c) => !deletedIds.has(c.id));
-    const initialRemaining = INITIAL_ATTENDANCE.filter((init) => !deletedIds.has(init.id));
-    return [
-      ...initialRemaining.map((init) => {
-        const overridden = custom.find((c) => c.id === init.id);
-        return overridden || init;
-      }),
-      ...custom.filter(
-        (c) =>
-          !deletedIds.has(c.id) &&
-          !INITIAL_ATTENDANCE.some((init) => init.id === c.id)
-      ),
-    ];
+    const result: AttendanceEntry[] = [];
+    const seenDates = new Set<string>();
+
+    // Custom items are latest teacher edits
+    for (const c of custom) {
+      result.push(c);
+      seenDates.add(c.date);
+    }
+
+    // Add initial remaining attendance dates that haven't been deleted or replaced
+    for (const init of INITIAL_ATTENDANCE) {
+      if (!deletedIds.has(init.id) && !seenDates.has(init.date) && !custom.some((c) => c.id === init.id)) {
+        result.push(init);
+        seenDates.add(init.date);
+      }
+    }
+
+    return result;
   }, [rows]);
 
   const billingConfig = useMemo<BillingConfigEntry>(() => {
@@ -304,7 +358,36 @@ export default function App() {
       throw new Error(errorJson.error || 'Could not save. Please try again.');
     }
 
-    setRows((prev) => [...prev.filter((x) => x.id !== entry.id), entry]);
+    setRows((prev) => {
+      const next = [...prev.filter((x) => x.id !== entry.id), entry];
+      persistRows(next);
+      return next;
+    });
+  }
+
+  async function saveEntries(entries: Entry[]) {
+    if (entries.length === 0) return;
+
+    const res = await fetch('/api/data', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-user-role': role,
+      },
+      body: JSON.stringify(entries),
+    });
+
+    if (!res.ok) {
+      const errorJson = (await res.json()) as { error?: string };
+      throw new Error(errorJson.error || 'Could not save. Please try again.');
+    }
+
+    setRows((prev) => {
+      const ids = new Set(entries.map((e) => e.id));
+      const next = [...prev.filter((x) => !ids.has(x.id)), ...entries];
+      persistRows(next);
+      return next;
+    });
   }
 
   function openAssignment(assignment: AssignmentEntry) {
@@ -493,14 +576,16 @@ export default function App() {
         throw new Error(data.error || 'Failed to remove submission');
       }
 
-      setRows((prev) =>
-        prev.filter(
+      setRows((prev) => {
+        const next = prev.filter(
           (r) =>
             r.id !== submissionId &&
             (r as unknown as { localId?: string }).localId !== submissionId &&
             !(isSubmission(r) && r.assignment === active.id && r.studentId === targetStudent.id)
-        )
-      );
+        );
+        persistRows(next);
+        return next;
+      });
       setDraft('');
       setFiles([]);
       setFeedback('');
@@ -564,29 +649,63 @@ export default function App() {
   const handleSaveAttendance = async (entry: AttendanceEntry) => {
     await action(async () => {
       await saveEntry(entry);
-      setToast(`Attendance saved for "${entry.topic}".`);
+      setToast(`Attendance saved for ${entry.date || entry.topic || 'lesson'}.`);
+    });
+  };
+
+  const handleSaveAttendanceBatch = async (entries: AttendanceEntry[], studentId?: string) => {
+    await action(async () => {
+      await saveEntries(entries);
+      const studentName = studentId
+        ? STUDENTS.find((s) => s.id === studentId)?.name || studentId
+        : 'student';
+      setToast(
+        `Marked ${entries.length} lesson${entries.length > 1 ? 's' : ''} as paid for ${studentName}.`
+      );
     });
   };
 
   const handleDeleteAttendance = async (id: string) => {
     await action(async () => {
-      const tombstone: DeletedAttendanceEntry = {
-        id: `del_${id}`,
-        kind: 'deleted_attendance',
-        targetId: id,
-      };
+      const targetSession = allAttendance.find((a) => a.id === id);
+      const matchingInit = targetSession
+        ? INITIAL_ATTENDANCE.find((init) => init.id === id || init.date === targetSession.date)
+        : INITIAL_ATTENDANCE.find((init) => init.id === id);
 
-      const res = await fetch(`/api/data?id=${encodeURIComponent(id)}`, {
-        method: 'DELETE',
-        headers: { 'x-user-role': role },
+      const targetIds = Array.from(new Set([id, matchingInit?.id].filter(Boolean))) as string[];
+
+      for (const targetId of targetIds) {
+        try {
+          await fetch(`/api/data?id=${encodeURIComponent(targetId)}`, {
+            method: 'DELETE',
+            headers: { 'x-user-role': role },
+          });
+        } catch {}
+
+        const tombstone: DeletedAttendanceEntry = {
+          id: `del_${targetId}`,
+          kind: 'deleted_attendance',
+          targetId: targetId,
+        };
+        await saveEntry(tombstone);
+      }
+
+      setRows((prev) => {
+        const next = [
+          ...prev.filter(
+            (x) =>
+              !targetIds.includes(x.id) &&
+              (!isDeletedAttendance(x) || !targetIds.includes(x.targetId))
+          ),
+          ...targetIds.map((targetId) => ({
+            id: `del_${targetId}`,
+            kind: 'deleted_attendance' as const,
+            targetId,
+          })),
+        ];
+        persistRows(next);
+        return next;
       });
-      if (!res.ok) throw new Error('Could not delete attendance session.');
-
-      await saveEntry(tombstone);
-      setRows((prev) => [
-        ...prev.filter((x) => x.id !== id && (x as { targetId?: string }).targetId !== id),
-        tombstone,
-      ]);
       setToast('Lesson attendance entry deleted.');
     });
   };
@@ -945,6 +1064,7 @@ export default function App() {
               attendanceList={allAttendance}
               billingConfig={billingConfig}
               onSaveAttendance={handleSaveAttendance}
+              onSaveAttendanceBatch={handleSaveAttendanceBatch}
               onDeleteAttendance={handleDeleteAttendance}
               onSaveBillingConfig={handleSaveBillingConfig}
               busy={busy}

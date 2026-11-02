@@ -2,10 +2,11 @@ import { getCurrentUser } from '../../../lib/auth-server';
 import {
   getStoredRecords,
   upsertStoredRecord,
+  upsertStoredRecords,
   deleteStoredRecord,
   deleteStoredRecordsByStudent,
 } from '../../../lib/storage';
-import { EntryPayloadSchema } from '../../../lib/validation';
+import { EntryPayloadSchema, type ValidatedEntry } from '../../../lib/validation';
 
 export async function GET() {
   const user = await getCurrentUser();
@@ -53,41 +54,61 @@ export async function POST(req: Request) {
     return Response.json({ error: 'Invalid JSON payload.' }, { status: 400 });
   }
 
-  const parseResult = EntryPayloadSchema.safeParse(rawJson);
-  if (!parseResult.success) {
-    const errorDetails = parseResult.error.errors.map((e) => e.message).join(', ');
-    return Response.json(
-      { error: `Validation error: ${errorDetails}` },
-      { status: 400 }
-    );
-  }
-
-  const validated = parseResult.data;
   const roleHeader = req.headers.get('x-user-role') || user.role;
+  const isBatch = Array.isArray(rawJson);
+  const itemsToValidate = isBatch ? (rawJson as unknown[]) : [rawJson];
 
-  // Server-side authorization guard
-  if (
-    (validated.kind === 'assignment' ||
-      validated.kind === 'material' ||
-      validated.kind === 'attendance' ||
-      validated.kind === 'billing_config' ||
-      validated.kind === 'deleted_attendance') &&
-    roleHeader === 'Student'
-  ) {
-    return Response.json(
-      { error: 'Only teachers can create or modify assignments, materials, or attendance.' },
-      { status: 403 }
+  const validatedList: ValidatedEntry[] = [];
+  for (const item of itemsToValidate) {
+    const parseResult = EntryPayloadSchema.safeParse(item);
+    if (!parseResult.success) {
+      const errorDetails = parseResult.error.errors.map((e) => e.message).join(', ');
+      return Response.json(
+        { error: `Validation error: ${errorDetails}` },
+        { status: 400 }
+      );
+    }
+
+    const validated = parseResult.data;
+
+    // Server-side authorization guard
+    if (
+      (validated.kind === 'assignment' ||
+        validated.kind === 'material' ||
+        validated.kind === 'attendance' ||
+        validated.kind === 'billing_config' ||
+        validated.kind === 'deleted_attendance') &&
+      roleHeader === 'Student'
+    ) {
+      return Response.json(
+        { error: 'Only teachers can create or modify assignments, materials, or attendance.' },
+        { status: 403 }
+      );
+    }
+
+    validatedList.push(validated);
+  }
+
+  if (validatedList.length === 1 && !isBatch) {
+    const single = validatedList[0];
+    await upsertStoredRecord(
+      single.id,
+      'local_seedy',
+      single.kind,
+      single as unknown as Record<string, unknown>
+    );
+  } else if (validatedList.length > 0) {
+    await upsertStoredRecords(
+      validatedList.map((item) => ({
+        id: item.id,
+        owner: 'local_seedy',
+        kind: item.kind,
+        data: item as unknown as Record<string, unknown>,
+      }))
     );
   }
 
-  await upsertStoredRecord(
-    validated.id,
-    'local_seedy',
-    validated.kind,
-    validated as unknown as Record<string, unknown>
-  );
-
-  return Response.json({ ok: true });
+  return Response.json({ ok: true, count: validatedList.length });
 }
 
 export async function DELETE(req: Request) {
