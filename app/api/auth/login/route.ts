@@ -6,10 +6,8 @@ export async function POST(req: Request) {
     const body = (await req.json()) as {
       username?: string;
       password?: string;
-      teacherUnlock?: boolean;
-      teacherPassword?: string;
     };
-    const { username, password, teacherUnlock, teacherPassword } = body;
+    const { username, password } = body;
 
     if (!username || !username.trim()) {
       return Response.json(
@@ -26,23 +24,12 @@ export async function POST(req: Request) {
       );
     }
 
-    // Teacher unlock authorization: teacher can unlock device and switch accounts
-    if (teacherUnlock) {
-      const teacherUser = findUserByUsername('teacher');
-      if (!teacherUser || !teacherPassword || teacherPassword.trim() !== teacherUser.password) {
-        return Response.json(
-          { error: 'Incorrect Teacher password.' },
-          { status: 401 }
-        );
-      }
-    } else {
-      // Direct login: users MUST enter their password at the very beginning
-      if (!password || password.trim() !== user.password) {
-        return Response.json(
-          { error: 'Incorrect password. Please enter the correct password.' },
-          { status: 401 }
-        );
-      }
+    // Direct login: users MUST enter their password
+    if (!password || password.trim() !== user.password) {
+      return Response.json(
+        { error: 'Incorrect password. Please enter the correct password.' },
+        { status: 401 }
+      );
     }
 
     const cookieStore = await cookies();

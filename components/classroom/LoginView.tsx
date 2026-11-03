@@ -9,8 +9,6 @@ import {
   Sparkles,
   ShieldCheck,
   CheckCircle2,
-  KeyRound,
-  X,
   Eye,
   EyeOff,
 } from 'lucide-react';
@@ -27,52 +25,20 @@ export function LoginView({ onLoginSuccess }: LoginViewProps) {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
-  const [boundUsername, setBoundUsername] = useState<string | null>(null);
-
-  // Teacher unlock modal state for switching accounts on a bound device
-  const [showTeacherModal, setShowTeacherModal] = useState(false);
-  const [teacherTargetUser, setTeacherTargetUser] = useState<ClassroomUser | null>(null);
-  const [teacherPassword, setTeacherPassword] = useState('');
-  const [teacherModalError, setTeacherModalError] = useState('');
 
   const passwordInputRef = useRef<HTMLInputElement>(null);
 
-  // Check if this device is already bound to a student account
+  // Clear any legacy device-lock key on startup
   useEffect(() => {
     try {
-      const bound = localStorage.getItem('classroom_device_account');
-      if (bound) {
-        setBoundUsername(bound);
-        const matched = CLASSROOM_USERS.find(
-          (u) => u.username.toLowerCase() === bound.toLowerCase()
-        );
-        if (matched) {
-          setSelectedUser(matched);
-        }
-      }
+      localStorage.removeItem('classroom_device_account');
     } catch {
       // ignore
     }
   }, []);
 
-  const boundUser = boundUsername
-    ? CLASSROOM_USERS.find((u) => u.username.toLowerCase() === boundUsername.toLowerCase()) || null
-    : null;
-
   const handleSelectUser = (user: ClassroomUser) => {
     setError('');
-
-    // If device is bound to someone else, prevent switching to a different account
-    if (boundUsername && boundUsername.toLowerCase() !== user.username.toLowerCase()) {
-      setTeacherTargetUser(user);
-      setTeacherModalError(
-        `This device is locked to ${boundUser?.displayName || boundUsername}. Enter Teacher password to switch accounts.`
-      );
-      setTeacherPassword('');
-      setShowTeacherModal(true);
-      return;
-    }
-
     setSelectedUser(user);
     setPassword('');
     // Auto focus password input
@@ -116,7 +82,7 @@ export function LoginView({ onLoginSuccess }: LoginViewProps) {
 
       try {
         localStorage.setItem('classroom_user_session', JSON.stringify(sessionData));
-        localStorage.setItem('classroom_device_account', data.user.username);
+        localStorage.removeItem('classroom_device_account');
       } catch {
         // ignore incognito quota
       }
@@ -130,58 +96,6 @@ export function LoginView({ onLoginSuccess }: LoginViewProps) {
       setBusy(false);
     }
   };
-
-  const handleTeacherUnlockSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!teacherPassword.trim()) {
-      setTeacherModalError('Please enter the Teacher password.');
-      return;
-    }
-
-    if (!teacherTargetUser) return;
-
-    setBusy(true);
-    setTeacherModalError('');
-
-    try {
-      const res = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          username: teacherTargetUser.username,
-          teacherUnlock: true,
-          teacherPassword: teacherPassword.trim(),
-        }),
-      });
-
-      const data = (await res.json()) as { ok?: boolean; error?: string; user?: ClassroomUser };
-
-      if (!res.ok || !data.ok || !data.user) {
-        throw new Error(data.error || 'Incorrect Teacher password.');
-      }
-
-      const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
-      const sessionData = {
-        ...data.user,
-        expiresAt: data.user.expiresAt || Date.now() + THIRTY_DAYS_MS,
-      };
-
-      try {
-        localStorage.setItem('classroom_user_session', JSON.stringify(sessionData));
-        localStorage.setItem('classroom_device_account', data.user.username);
-      } catch {}
-
-      setShowTeacherModal(false);
-      onLoginSuccess(sessionData);
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Verification failed';
-      setTeacherModalError(msg);
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const isBoundDevice = Boolean(boundUsername);
 
   return (
     <div
@@ -235,56 +149,9 @@ export function LoginView({ onLoginSuccess }: LoginViewProps) {
             Little Steps · Writing Club
           </h1>
           <p style={{ fontSize: '13px', color: '#6d7e72', margin: 0 }}>
-            {isBoundDevice
-              ? `Welcome back, ${boundUser?.displayName || boundUsername}! Enter password to continue.`
-              : 'Select your account and enter your password to start.'}
+            Choose your profile and enter your password to start.
           </p>
         </div>
-
-        {/* DEVICE BOUND NOTICE */}
-        {isBoundDevice && boundUser && (
-          <div
-            style={{
-              background: '#f2f8f0',
-              border: '1px solid #d4e8ce',
-              borderRadius: '10px',
-              padding: '10px 14px',
-              marginBottom: '18px',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              gap: '10px',
-            }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <ShieldCheck size={16} color="#2b7352" />
-              <span style={{ fontSize: '12px', color: '#27523c', fontWeight: 600 }}>
-                This device is registered to {boundUser.displayName}
-              </span>
-            </div>
-            <button
-              type="button"
-              onClick={() => {
-                setTeacherTargetUser(CLASSROOM_USERS[0]);
-                setTeacherModalError('');
-                setTeacherPassword('');
-                setShowTeacherModal(true);
-              }}
-              style={{
-                background: 'none',
-                border: 0,
-                color: '#496b56',
-                fontSize: '11px',
-                fontWeight: 600,
-                cursor: 'pointer',
-                textDecoration: 'underline',
-                padding: 0,
-              }}
-            >
-              Switch
-            </button>
-          </div>
-        )}
 
         {/* ERROR BANNER */}
         {error && (
@@ -320,15 +187,13 @@ export function LoginView({ onLoginSuccess }: LoginViewProps) {
               Select:
             </span>
             <span style={{ fontSize: '11px', color: '#8a998c' }}>
-              {isBoundDevice ? 'Device locked' : 'Tap to choose profile'}
+              Tap to choose profile
             </span>
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
             {CLASSROOM_USERS.map((u) => {
               const isSelected = selectedUser.username === u.username;
-              const isLockedOnDevice =
-                boundUsername && boundUsername.toLowerCase() !== u.username.toLowerCase();
 
               return (
                 <button
@@ -342,17 +207,8 @@ export function LoginView({ onLoginSuccess }: LoginViewProps) {
                     gap: '8px',
                     padding: '10px 12px',
                     borderRadius: '10px',
-                    border: isSelected
-                      ? '2px solid #286959'
-                      : isLockedOnDevice
-                      ? '1px dashed #dbe2d8'
-                      : '1px solid #dce4d6',
-                    background: isSelected
-                      ? '#f1f8f3'
-                      : isLockedOnDevice
-                      ? '#fafbfa'
-                      : '#ffffff',
-                    opacity: isLockedOnDevice ? 0.65 : 1,
+                    border: isSelected ? '2px solid #286959' : '1px solid #dce4d6',
+                    background: isSelected ? '#f1f8f3' : '#ffffff',
                     cursor: 'pointer',
                     textAlign: 'left',
                     transition: 'all 0.15s ease',
@@ -392,11 +248,7 @@ export function LoginView({ onLoginSuccess }: LoginViewProps) {
                     </div>
                   </div>
 
-                  {isLockedOnDevice ? (
-                    <Lock size={13} color="#9ea8a0" />
-                  ) : isSelected ? (
-                    <CheckCircle2 size={15} color="#286959" />
-                  ) : null}
+                  {isSelected && <CheckCircle2 size={15} color="#286959" />}
                 </button>
               );
             })}
@@ -529,7 +381,7 @@ export function LoginView({ onLoginSuccess }: LoginViewProps) {
           </button>
         </form>
 
-        {/* FOOTER INFO: 30-Day session and Device policy */}
+        {/* FOOTER INFO: 30-Day session */}
         <div
           style={{
             marginTop: '22px',
@@ -537,7 +389,7 @@ export function LoginView({ onLoginSuccess }: LoginViewProps) {
             borderTop: '1px solid #edf0e9',
             display: 'flex',
             alignItems: 'center',
-            justifyContent: 'space-between',
+            justifyContent: 'center',
             gap: '8px',
           }}
         >
@@ -553,145 +405,8 @@ export function LoginView({ onLoginSuccess }: LoginViewProps) {
             <ShieldCheck size={13} color="#2e7355" />
             Keeps you logged in for 30 days
           </span>
-
-          {boundUsername && (
-            <button
-              type="button"
-              className="text-button"
-              onClick={() => {
-                setTeacherTargetUser(CLASSROOM_USERS[0]);
-                setTeacherModalError('');
-                setTeacherPassword('');
-                setShowTeacherModal(true);
-              }}
-              style={{
-                fontSize: '11px',
-                color: '#587361',
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '4px',
-              }}
-            >
-              <KeyRound size={12} /> Teacher Unlock
-            </button>
-          )}
         </div>
       </div>
-
-      {/* TEACHER UNLOCK MODAL */}
-      {showTeacherModal && (
-        <div className="modal-overlay" onClick={() => setShowTeacherModal(false)}>
-          <div
-            className="modal"
-            style={{ maxWidth: '380px', padding: '28px' }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <button className="close" onClick={() => setShowTeacherModal(false)}>
-              <X size={18} />
-            </button>
-
-            <div style={{ textAlign: 'center', marginBottom: '16px' }}>
-              <div
-                style={{
-                  width: '44px',
-                  height: '44px',
-                  background: '#eef6ec',
-                  borderRadius: '50%',
-                  color: '#286654',
-                  display: 'grid',
-                  placeItems: 'center',
-                  margin: '0 auto 10px',
-                }}
-              >
-                <Lock size={20} />
-              </div>
-              <h3 style={{ fontSize: '18px', color: '#273f3b', margin: '0 0 4px' }}>
-                Teacher Authorization
-              </h3>
-              <p style={{ fontSize: '12px', color: '#687b70', margin: 0 }}>
-                {teacherTargetUser?.role === 'Teacher'
-                  ? 'Enter Teacher password to enter teacher workspace.'
-                  : `Enter Teacher password to unlock and switch device to ${teacherTargetUser?.displayName}.`}
-              </p>
-            </div>
-
-            {teacherModalError && (
-              <div
-                style={{
-                  background: '#fdeeed',
-                  border: '1px solid #f4bcbb',
-                  borderRadius: '7px',
-                  padding: '8px 12px',
-                  fontSize: '11px',
-                  color: '#a32b29',
-                  marginBottom: '14px',
-                  textAlign: 'center',
-                }}
-              >
-                {teacherModalError}
-              </div>
-            )}
-
-            <form onSubmit={handleTeacherUnlockSubmit}>
-              <div style={{ marginBottom: '16px' }}>
-                <label
-                  style={{
-                    display: 'block',
-                    fontSize: '11px',
-                    fontWeight: 600,
-                    color: '#3e5246',
-                    marginBottom: '6px',
-                  }}
-                >
-                  Teacher Password
-                </label>
-                <input
-                  type="password"
-                  value={teacherPassword}
-                  onChange={(e) => setTeacherPassword(e.target.value)}
-                  placeholder="Enter teacher password"
-                  autoFocus
-                  style={{
-                    border: '1px solid #dce4d4',
-                    borderRadius: '7px',
-                    padding: '10px 12px',
-                    fontSize: '13px',
-                    width: '100%',
-                    boxSizing: 'border-box',
-                  }}
-                />
-              </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-                <button
-                  type="button"
-                  onClick={() => setShowTeacherModal(false)}
-                  style={{
-                    padding: '10px',
-                    borderRadius: '7px',
-                    border: '1px solid #dfe5dc',
-                    background: '#fff',
-                    color: '#4f6154',
-                    fontSize: '12px',
-                    fontWeight: 600,
-                    cursor: 'pointer',
-                  }}
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="primary"
-                  disabled={busy || !teacherPassword.trim()}
-                  style={{ padding: '10px', fontSize: '12px' }}
-                >
-                  {busy ? 'Verifying…' : 'Unlock & Sign In'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

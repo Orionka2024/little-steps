@@ -139,7 +139,7 @@ export default function App() {
     };
     try {
       localStorage.setItem('classroom_user_session', JSON.stringify(sessionWithExpiry));
-      localStorage.setItem('classroom_device_account', user.username);
+      localStorage.removeItem('classroom_device_account');
     } catch {
       // ignore
     }
