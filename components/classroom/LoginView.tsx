@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   NotebookPen,
   Lock,
@@ -11,6 +11,8 @@ import {
   CheckCircle2,
   KeyRound,
   X,
+  Eye,
+  EyeOff,
 } from 'lucide-react';
 import type { ClassroomUser } from '../../lib/auth-types';
 import { CLASSROOM_USERS } from '../../lib/auth-types';
@@ -20,22 +22,34 @@ interface LoginViewProps {
 }
 
 export function LoginView({ onLoginSuccess }: LoginViewProps) {
-  const [username, setUsername] = useState('');
+  const [selectedUser, setSelectedUser] = useState<ClassroomUser>(CLASSROOM_USERS[1]); // Default to Hajun
+  const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [boundUsername, setBoundUsername] = useState<string | null>(null);
 
-  // Teacher unlock modal state for switching accounts or accessing Teacher workspace
+  // Teacher unlock modal state for switching accounts on a bound device
   const [showTeacherModal, setShowTeacherModal] = useState(false);
   const [teacherTargetUser, setTeacherTargetUser] = useState<ClassroomUser | null>(null);
   const [teacherPassword, setTeacherPassword] = useState('');
   const [teacherModalError, setTeacherModalError] = useState('');
 
+  const passwordInputRef = useRef<HTMLInputElement>(null);
+
   // Check if this device is already bound to a student account
   useEffect(() => {
     try {
       const bound = localStorage.getItem('classroom_device_account');
-      if (bound) setBoundUsername(bound);
+      if (bound) {
+        setBoundUsername(bound);
+        const matched = CLASSROOM_USERS.find(
+          (u) => u.username.toLowerCase() === bound.toLowerCase()
+        );
+        if (matched) {
+          setSelectedUser(matched);
+        }
+      }
     } catch {
       // ignore
     }
@@ -45,7 +59,36 @@ export function LoginView({ onLoginSuccess }: LoginViewProps) {
     ? CLASSROOM_USERS.find((u) => u.username.toLowerCase() === boundUsername.toLowerCase()) || null
     : null;
 
-  const performLogin = async (targetUsername: string, password?: string) => {
+  const handleSelectUser = (user: ClassroomUser) => {
+    setError('');
+
+    // If device is bound to someone else, prevent switching to a different account
+    if (boundUsername && boundUsername.toLowerCase() !== user.username.toLowerCase()) {
+      setTeacherTargetUser(user);
+      setTeacherModalError(
+        `This device is locked to ${boundUser?.displayName || boundUsername}. Enter Teacher password to switch accounts.`
+      );
+      setTeacherPassword('');
+      setShowTeacherModal(true);
+      return;
+    }
+
+    setSelectedUser(user);
+    setPassword('');
+    // Auto focus password input
+    setTimeout(() => {
+      passwordInputRef.current?.focus();
+    }, 50);
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!password.trim()) {
+      setError('Please enter your password.');
+      passwordInputRef.current?.focus();
+      return;
+    }
+
     setBusy(true);
     setError('');
 
@@ -53,13 +96,16 @@ export function LoginView({ onLoginSuccess }: LoginViewProps) {
       const res = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username: targetUsername, password }),
+        body: JSON.stringify({
+          username: selectedUser.username,
+          password: password.trim(),
+        }),
       });
 
       const data = (await res.json()) as { ok?: boolean; error?: string; user?: ClassroomUser };
 
       if (!res.ok || !data.ok || !data.user) {
-        throw new Error(data.error || 'Login failed. Please try again.');
+        throw new Error(data.error || 'Incorrect password. Please try again.');
       }
 
       const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
@@ -79,33 +125,10 @@ export function LoginView({ onLoginSuccess }: LoginViewProps) {
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Login failed';
       setError(msg);
+      passwordInputRef.current?.focus();
     } finally {
       setBusy(false);
     }
-  };
-
-  const handleQuickSelectClick = (user: ClassroomUser) => {
-    // If device is bound to someone else, block logging into a different account unless unlocked by teacher
-    if (boundUsername && boundUsername.toLowerCase() !== user.username.toLowerCase()) {
-      setTeacherTargetUser(user);
-      setTeacherModalError(
-        `This device is locked to ${boundUser?.displayName || boundUsername}. Enter Teacher password to switch accounts.`
-      );
-      setShowTeacherModal(true);
-      return;
-    }
-
-    // Teacher account requires Teacher password to protect grades/billing
-    if (user.role === 'Teacher') {
-      setTeacherTargetUser(user);
-      setTeacherModalError('');
-      setTeacherPassword('');
-      setShowTeacherModal(true);
-      return;
-    }
-
-    // Students log in with 1 tap without any password!
-    performLogin(user.username);
   };
 
   const handleTeacherUnlockSubmit = async (e: React.FormEvent) => {
@@ -126,7 +149,8 @@ export function LoginView({ onLoginSuccess }: LoginViewProps) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           username: teacherTargetUser.username,
-          password: teacherPassword.trim(),
+          teacherUnlock: true,
+          teacherPassword: teacherPassword.trim(),
         }),
       });
 
@@ -150,28 +174,14 @@ export function LoginView({ onLoginSuccess }: LoginViewProps) {
       setShowTeacherModal(false);
       onLoginSuccess(sessionData);
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Authentication failed';
+      const msg = err instanceof Error ? err.message : 'Verification failed';
       setTeacherModalError(msg);
     } finally {
       setBusy(false);
     }
   };
 
-  const handleManualSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    const cleanUser = username.trim().toLowerCase();
-    if (!cleanUser) {
-      setError('Please select or enter your name.');
-      return;
-    }
-
-    const matched = CLASSROOM_USERS.find((u) => u.username.toLowerCase() === cleanUser);
-    if (matched) {
-      handleQuickSelectClick(matched);
-    } else {
-      performLogin(cleanUser);
-    }
-  };
+  const isBoundDevice = Boolean(boundUsername);
 
   return (
     <div
@@ -192,9 +202,10 @@ export function LoginView({ onLoginSuccess }: LoginViewProps) {
           border: '1px solid #e5ebe1',
           borderRadius: '20px',
           padding: '36px 30px',
-          boxShadow: '0 12px 40px #244b360d',
+          boxShadow: '0 16px 44px #244b360f',
         }}
       >
+        {/* LOGO & HEADING */}
         <div style={{ textAlign: 'center', marginBottom: '24px' }}>
           <div
             style={{
@@ -205,8 +216,8 @@ export function LoginView({ onLoginSuccess }: LoginViewProps) {
               display: 'grid',
               placeItems: 'center',
               borderRadius: '14px',
-              margin: '0 auto 14px',
-              transform: 'rotate(-6deg)',
+              margin: '0 auto 12px',
+              transform: 'rotate(-5deg)',
               boxShadow: '0 6px 16px #28695933',
             }}
           >
@@ -214,94 +225,88 @@ export function LoginView({ onLoginSuccess }: LoginViewProps) {
           </div>
           <h1
             style={{
-              fontSize: '24px',
+              fontSize: '23px',
               fontFamily: 'Manrope, sans-serif',
               fontWeight: 800,
               color: '#273f3b',
-              margin: '0 0 6px',
+              margin: '0 0 5px',
             }}
           >
             Little Steps · Writing Club
           </h1>
-          <p style={{ fontSize: '13px', color: '#748378', margin: 0 }}>
-            {boundUser ? `Welcome back, ${boundUser.displayName}!` : 'Select your name to start writing'}
+          <p style={{ fontSize: '13px', color: '#6d7e72', margin: 0 }}>
+            {isBoundDevice
+              ? `Welcome back, ${boundUser?.displayName || boundUsername}! Enter password to continue.`
+              : 'Select your account and enter your password to start.'}
           </p>
         </div>
 
+        {/* DEVICE BOUND NOTICE */}
+        {isBoundDevice && boundUser && (
+          <div
+            style={{
+              background: '#f2f8f0',
+              border: '1px solid #d4e8ce',
+              borderRadius: '10px',
+              padding: '10px 14px',
+              marginBottom: '18px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: '10px',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <ShieldCheck size={16} color="#2b7352" />
+              <span style={{ fontSize: '12px', color: '#27523c', fontWeight: 600 }}>
+                This device is registered to {boundUser.displayName}
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setTeacherTargetUser(CLASSROOM_USERS[0]);
+                setTeacherModalError('');
+                setTeacherPassword('');
+                setShowTeacherModal(true);
+              }}
+              style={{
+                background: 'none',
+                border: 0,
+                color: '#496b56',
+                fontSize: '11px',
+                fontWeight: 600,
+                cursor: 'pointer',
+                textDecoration: 'underline',
+                padding: 0,
+              }}
+            >
+              Switch
+            </button>
+          </div>
+        )}
+
+        {/* ERROR BANNER */}
         {error && (
           <div
             style={{
               background: '#fdeeed',
               border: '1px solid #f4bcbb',
-              borderRadius: '8px',
+              borderRadius: '9px',
               padding: '10px 14px',
               fontSize: '12px',
               color: '#a32b29',
               marginBottom: '18px',
               textAlign: 'center',
+              fontWeight: 500,
             }}
           >
             {error}
           </div>
         )}
 
-        {/* BOUND DEVICE PRIMARY ACTION: 1-Tap Entry for the registered user */}
-        {boundUser && (
-          <div
-            style={{
-              background: '#f3f8f1',
-              border: '1px solid #d4e7d0',
-              borderRadius: '14px',
-              padding: '18px',
-              marginBottom: '20px',
-              textAlign: 'center',
-            }}
-          >
-            <div
-              style={{
-                width: '46px',
-                height: '46px',
-                borderRadius: '50%',
-                background: boundUser.role === 'Teacher' ? '#e2ebd8' : '#f2ddc8',
-                color: boundUser.role === 'Teacher' ? '#255e3a' : '#805b3e',
-                display: 'grid',
-                placeItems: 'center',
-                fontWeight: 800,
-                fontSize: '18px',
-                margin: '0 auto 10px',
-                boxShadow: '0 4px 12px #00000010',
-              }}
-            >
-              {boundUser.avatar}
-            </div>
-            <strong style={{ fontSize: '15px', color: '#273f3b', display: 'block', marginBottom: '2px' }}>
-              {boundUser.displayName}
-            </strong>
-            <small style={{ fontSize: '11px', color: '#5e7264', display: 'block', marginBottom: '14px' }}>
-              Device active session (stays signed in for 30 days)
-            </small>
-
-            <button
-              type="button"
-              className="primary"
-              disabled={busy}
-              onClick={() => performLogin(boundUser.username)}
-              style={{
-                width: '100%',
-                padding: '12px',
-                fontSize: '13px',
-                gap: '8px',
-                boxShadow: '0 4px 12px #28665425',
-              }}
-            >
-              {busy ? 'Opening Classroom…' : `Continue as ${boundUser.displayName}`}{' '}
-              <ArrowRight size={16} />
-            </button>
-          </div>
-        )}
-
-        {/* QUICK SELECT SECTION */}
-        <div style={{ marginTop: boundUser ? '10px' : '0' }}>
+        {/* QUICK SELECT */}
+        <div style={{ marginBottom: '22px' }}>
           <div
             style={{
               display: 'flex',
@@ -310,118 +315,246 @@ export function LoginView({ onLoginSuccess }: LoginViewProps) {
               marginBottom: '10px',
             }}
           >
-            <span style={{ fontSize: '12px', color: '#526658', fontWeight: 700 }}>
+            <span style={{ fontSize: '12px', color: '#687b6e', fontWeight: 700 }}>
               <Sparkles size={13} style={{ display: 'inline', verticalAlign: '-1px' }} /> Quick
               Select:
             </span>
-            <span style={{ fontSize: '11px', color: '#889689' }}>No password required</span>
+            <span style={{ fontSize: '11px', color: '#8a998c' }}>
+              {isBoundDevice ? 'Device locked' : 'Tap to choose profile'}
+            </span>
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
             {CLASSROOM_USERS.map((u) => {
-              const isLockedForDevice =
-                Boolean(boundUsername) &&
-                boundUsername?.toLowerCase() !== u.username.toLowerCase();
-              const isCurrentBound =
-                Boolean(boundUsername) &&
-                boundUsername?.toLowerCase() === u.username.toLowerCase();
+              const isSelected = selectedUser.username === u.username;
+              const isLockedOnDevice =
+                boundUsername && boundUsername.toLowerCase() !== u.username.toLowerCase();
 
               return (
                 <button
                   key={u.username}
                   type="button"
-                  disabled={busy}
-                  onClick={() => handleQuickSelectClick(u)}
+                  onClick={() => handleSelectUser(u)}
                   style={{
                     display: 'flex',
                     alignItems: 'center',
-                    gap: '9px',
+                    justifyContent: 'space-between',
+                    gap: '8px',
                     padding: '10px 12px',
                     borderRadius: '10px',
-                    border: isCurrentBound
-                      ? '2px solid #286654'
-                      : isLockedForDevice
-                      ? '1px solid #ebeee8'
-                      : '1px solid #dfe5db',
-                    background: isCurrentBound
-                      ? '#f4f8f2'
-                      : isLockedForDevice
-                      ? '#fafbf9'
+                    border: isSelected
+                      ? '2px solid #286959'
+                      : isLockedOnDevice
+                      ? '1px dashed #dbe2d8'
+                      : '1px solid #dce4d6',
+                    background: isSelected
+                      ? '#f1f8f3'
+                      : isLockedOnDevice
+                      ? '#fafbfa'
                       : '#ffffff',
-                    cursor: busy ? 'not-allowed' : 'pointer',
+                    opacity: isLockedOnDevice ? 0.65 : 1,
+                    cursor: 'pointer',
                     textAlign: 'left',
-                    opacity: isLockedForDevice ? 0.75 : 1,
                     transition: 'all 0.15s ease',
+                    boxShadow: isSelected ? '0 3px 10px #28695914' : 'none',
                   }}
                 >
-                  <span
-                    style={{
-                      width: '26px',
-                      height: '26px',
-                      borderRadius: '50%',
-                      background: u.role === 'Teacher' ? '#e2ebd8' : '#f2ddc8',
-                      color: u.role === 'Teacher' ? '#255e3a' : '#805b3e',
-                      display: 'grid',
-                      placeItems: 'center',
-                      fontWeight: 700,
-                      fontSize: '12px',
-                      flexShrink: 0,
-                    }}
-                  >
-                    {u.avatar}
-                  </span>
-                  <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                     <span
                       style={{
-                        fontSize: '12px',
-                        color: '#273f3b',
-                        fontWeight: isCurrentBound ? 800 : 600,
-                        display: 'block',
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                        whiteSpace: 'nowrap',
+                        width: '26px',
+                        height: '26px',
+                        borderRadius: '50%',
+                        background: u.role === 'Teacher' ? '#e2ebd8' : '#f2ddc8',
+                        color: u.role === 'Teacher' ? '#255e3a' : '#805b3e',
+                        display: 'grid',
+                        placeItems: 'center',
+                        fontWeight: 700,
+                        fontSize: '11px',
                       }}
                     >
-                      {u.displayName}
+                      {u.avatar}
                     </span>
-                    <small style={{ fontSize: '9px', color: '#829184' }}>
-                      {u.role === 'Teacher' ? 'Teacher' : 'Student'}
-                    </small>
+                    <div>
+                      <div
+                        style={{
+                          fontSize: '12px',
+                          color: '#273f3b',
+                          fontWeight: isSelected ? 700 : 600,
+                          lineHeight: 1.2,
+                        }}
+                      >
+                        {u.displayName}
+                      </div>
+                      <div style={{ fontSize: '10px', color: '#7a8c7e', lineHeight: 1.1 }}>
+                        {u.role === 'Teacher' ? 'Teacher' : 'Student'}
+                      </div>
+                    </div>
                   </div>
-                  {isLockedForDevice && <Lock size={12} color="#9aa79d" />}
-                  {isCurrentBound && <CheckCircle2 size={13} color="#286654" />}
+
+                  {isLockedOnDevice ? (
+                    <Lock size={13} color="#9ea8a0" />
+                  ) : isSelected ? (
+                    <CheckCircle2 size={15} color="#286959" />
+                  ) : null}
                 </button>
               );
             })}
           </div>
-
-          {boundUsername && (
-            <p
-              style={{
-                fontSize: '10px',
-                color: '#7b8a7f',
-                marginTop: '10px',
-                lineHeight: 1.45,
-                textAlign: 'center',
-              }}
-            >
-              🔒 This device is locked to <strong>{boundUser?.displayName || boundUsername}</strong> so other users cannot access different accounts.
-            </p>
-          )}
         </div>
 
-        {/* DEVICE BINDING UNLOCK OR MANUAL USERNAME */}
+        {/* LOGIN FORM */}
+        <form onSubmit={handleSubmit}>
+          {/* Selected user indicator */}
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              background: '#f8faf6',
+              border: '1px solid #e2ebd8',
+              borderRadius: '9px',
+              padding: '8px 12px',
+              marginBottom: '16px',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <User size={15} color="#456854" />
+              <span style={{ fontSize: '12px', color: '#334c3e' }}>
+                Signing in as <strong>{selectedUser.displayName}</strong>
+              </span>
+            </div>
+            <span
+              style={{
+                fontSize: '10px',
+                padding: '2px 7px',
+                borderRadius: '4px',
+                background: selectedUser.role === 'Teacher' ? '#e1ebe0' : '#f3e8dc',
+                color: selectedUser.role === 'Teacher' ? '#255e3a' : '#805b3e',
+                fontWeight: 700,
+                textTransform: 'uppercase',
+              }}
+            >
+              {selectedUser.role}
+            </span>
+          </div>
+
+          {/* Password field */}
+          <div style={{ marginBottom: '22px' }}>
+            <label
+              style={{
+                display: 'block',
+                fontSize: '12px',
+                fontWeight: 600,
+                color: '#3e5246',
+                marginBottom: '6px',
+              }}
+            >
+              Password
+            </label>
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '10px',
+                border: '1px solid #cfdad0',
+                borderRadius: '9px',
+                padding: '0 12px',
+                background: '#ffffff',
+                transition: 'border 0.2s',
+              }}
+            >
+              <Lock size={16} color="#8a998c" />
+              <input
+                ref={passwordInputRef}
+                type={showPassword ? 'text' : 'password'}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder={`Enter password for ${selectedUser.displayName}`}
+                autoComplete="current-password"
+                autoCapitalize="none"
+                style={{
+                  border: 0,
+                  padding: '12px 0',
+                  outline: 'none',
+                  background: 'none',
+                  width: '100%',
+                  fontSize: '13px',
+                  color: '#273f3b',
+                }}
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                title={showPassword ? 'Hide password' : 'Show password'}
+                style={{
+                  background: 'none',
+                  border: 0,
+                  padding: '4px',
+                  cursor: 'pointer',
+                  color: '#8a998c',
+                  display: 'flex',
+                  alignItems: 'center',
+                }}
+              >
+                {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+              </button>
+            </div>
+          </div>
+
+          {/* Submit button */}
+          <button
+            className="primary"
+            type="submit"
+            disabled={busy || !password.trim()}
+            style={{
+              width: '100%',
+              padding: '13px',
+              fontSize: '13px',
+              fontWeight: 700,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '8px',
+              borderRadius: '9px',
+            }}
+          >
+            {busy ? (
+              'Signing In…'
+            ) : (
+              <>
+                Sign In as {selectedUser.displayName} <ArrowRight size={16} />
+              </>
+            )}
+          </button>
+        </form>
+
+        {/* FOOTER INFO: 30-Day session and Device policy */}
         <div
           style={{
             marginTop: '22px',
-            paddingTop: '18px',
+            paddingTop: '16px',
             borderTop: '1px solid #edf0e9',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
+            gap: '8px',
           }}
         >
-          {boundUsername ? (
+          <span
+            style={{
+              fontSize: '11px',
+              color: '#53705d',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '5px',
+            }}
+          >
+            <ShieldCheck size={13} color="#2e7355" />
+            Keeps you logged in for 30 days
+          </span>
+
+          {boundUsername && (
             <button
               type="button"
               className="text-button"
@@ -431,64 +564,17 @@ export function LoginView({ onLoginSuccess }: LoginViewProps) {
                 setTeacherPassword('');
                 setShowTeacherModal(true);
               }}
-              style={{ fontSize: '11px', color: '#587361', display: 'inline-flex', alignItems: 'center', gap: '5px' }}
+              style={{
+                fontSize: '11px',
+                color: '#587361',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '4px',
+              }}
             >
-              <KeyRound size={13} /> Teacher Unlock / Switch Account
+              <KeyRound size={12} /> Teacher Unlock
             </button>
-          ) : (
-            <form onSubmit={handleManualSubmit} style={{ width: '100%', display: 'flex', gap: '8px' }}>
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '8px',
-                  border: '1px solid #d9e2d5',
-                  borderRadius: '8px',
-                  padding: '0 10px',
-                  background: '#fafbf9',
-                  flex: 1,
-                }}
-              >
-                <User size={14} color="#8a998c" />
-                <input
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
-                  placeholder="Or type name: hajun, mark…"
-                  autoCapitalize="none"
-                  style={{
-                    border: 0,
-                    padding: '9px 0',
-                    outline: 'none',
-                    background: 'none',
-                    width: '100%',
-                    fontSize: '12px',
-                  }}
-                />
-              </div>
-              <button
-                type="submit"
-                className="primary"
-                disabled={busy || !username.trim()}
-                style={{ padding: '8px 14px', fontSize: '11px' }}
-              >
-                Sign In
-              </button>
-            </form>
           )}
-
-          <span
-            style={{
-              fontSize: '10px',
-              padding: '3px 7px',
-              borderRadius: '5px',
-              background: '#eef4ec',
-              color: '#3d6148',
-              fontWeight: 600,
-              whiteSpace: 'nowrap',
-            }}
-          >
-            30-day session
-          </span>
         </div>
       </div>
 
@@ -507,8 +593,8 @@ export function LoginView({ onLoginSuccess }: LoginViewProps) {
             <div style={{ textAlign: 'center', marginBottom: '16px' }}>
               <div
                 style={{
-                  width: '42px',
-                  height: '42px',
+                  width: '44px',
+                  height: '44px',
                   background: '#eef6ec',
                   borderRadius: '50%',
                   color: '#286654',
@@ -525,7 +611,7 @@ export function LoginView({ onLoginSuccess }: LoginViewProps) {
               <p style={{ fontSize: '12px', color: '#687b70', margin: 0 }}>
                 {teacherTargetUser?.role === 'Teacher'
                   ? 'Enter Teacher password to enter teacher workspace.'
-                  : `Enter Teacher password to switch device account to ${teacherTargetUser?.displayName}.`}
+                  : `Enter Teacher password to unlock and switch device to ${teacherTargetUser?.displayName}.`}
               </p>
             </div>
 
