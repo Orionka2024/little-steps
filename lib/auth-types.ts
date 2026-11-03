@@ -5,6 +5,7 @@ export interface ClassroomUser {
   role: 'Teacher' | 'Student';
   studentId?: string;
   avatar: string;
+  expiresAt?: number;
 }
 
 export const CLASSROOM_USERS: ClassroomUser[] = [

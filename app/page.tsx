@@ -58,7 +58,14 @@ function getInitialUserSession(): ClassroomUser | null {
     const cached = localStorage.getItem('classroom_user_session');
     if (cached) {
       const parsed = JSON.parse(cached) as ClassroomUser;
-      if (parsed && parsed.username) return parsed;
+      if (parsed && parsed.username) {
+        // Enforce 30-day session persistence
+        if (parsed.expiresAt && Date.now() > parsed.expiresAt) {
+          localStorage.removeItem('classroom_user_session');
+          return null;
+        }
+        return parsed;
+      }
     }
   } catch {
     // ignore
@@ -125,10 +132,21 @@ export default function App() {
   const activeStudent = isTeacherReviewing ? PREVIEW_STUDENT : selectedStudent;
 
   const applyUserSession = useCallback((user: ClassroomUser) => {
-    setCurrentUser(user);
-    setRole(user.role);
-    if (user.role === 'Student' && user.studentId) {
-      const student = STUDENTS.find((s) => s.id === user.studentId);
+    const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
+    const sessionWithExpiry: ClassroomUser = {
+      ...user,
+      expiresAt: user.expiresAt || Date.now() + THIRTY_DAYS_MS,
+    };
+    try {
+      localStorage.setItem('classroom_user_session', JSON.stringify(sessionWithExpiry));
+      localStorage.setItem('classroom_device_account', user.username);
+    } catch {
+      // ignore
+    }
+    setCurrentUser(sessionWithExpiry);
+    setRole(sessionWithExpiry.role);
+    if (sessionWithExpiry.role === 'Student' && sessionWithExpiry.studentId) {
+      const student = STUDENTS.find((s) => s.id === sessionWithExpiry.studentId);
       if (student) setSelectedStudent(student);
     }
   }, []);
@@ -141,9 +159,6 @@ export default function App() {
           const data = (await res.json()) as { authenticated: boolean; user?: ClassroomUser };
           if (data.authenticated && data.user) {
             applyUserSession(data.user);
-            try {
-              localStorage.setItem('classroom_user_session', JSON.stringify(data.user));
-            } catch {}
           }
         } else if (res.status === 401) {
           try {
