@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   CalendarCheck,
   Plus,
@@ -11,6 +11,9 @@ import {
   CheckCircle2,
   Clock,
   Users,
+  Edit2,
+  History,
+  X,
 } from 'lucide-react';
 import type {
   Role,
@@ -42,12 +45,20 @@ export function AttendanceView({
   onDeleteAttendance,
   busy = false,
 }: AttendanceViewProps) {
-  // Flat rate per lesson: 800 CZK regardless of how many kids attend
-  const rate = billingConfig.defaultRate || 800;
+  // Current default flat rate per lesson: 900 CZK (300 CZK each student)
+  const rate = billingConfig.defaultRate || 900;
   const currency = billingConfig.currency || 'CZK';
 
-  // Inline "New Lesson" date and student presence
+  // Inline "New Lesson" date, manual rate entry, and student presence
   const [newDate, setNewDate] = useState<string>(() => new Date().toISOString().split('T')[0]);
+  const [lessonPrice, setLessonPrice] = useState<string>(() => String(rate));
+  const [editingPriceSessionId, setEditingPriceSessionId] = useState<string | null>(null);
+  const [editingPriceInput, setEditingPriceInput] = useState<string>('');
+
+  useEffect(() => {
+    setLessonPrice(String(rate));
+  }, [rate]);
+
   const [presentMap, setPresentMap] = useState<Record<string, boolean>>(() => {
     const init: Record<string, boolean> = {};
     for (const s of STUDENTS) {
@@ -75,14 +86,21 @@ export function AttendanceView({
   };
 
   // Group / Overall totals:
-  // Each lesson costs `rate` (800 CZK) regardless of attendance
+  // Calculated dynamically by summing each lesson's recorded ratePerLesson (preserving historical rates)
   const overallTotals = useMemo(() => {
     const totalLessons = sortedSessions.length;
     const paidLessons = sortedSessions.filter(isSessionPaid).length;
     const unpaidLessons = Math.max(0, totalLessons - paidLessons);
-    const totalCharged = totalLessons * rate;
-    const totalPaid = paidLessons * rate;
-    const balanceDue = unpaidLessons * rate;
+    const totalCharged = sortedSessions.reduce(
+      (sum, s) => sum + (s.ratePerLesson ?? rate),
+      0
+    );
+    const totalPaid = sortedSessions
+      .filter(isSessionPaid)
+      .reduce((sum, s) => sum + (s.ratePerLesson ?? rate), 0);
+    const balanceDue = sortedSessions
+      .filter((s) => !isSessionPaid(s))
+      .reduce((sum, s) => sum + (s.ratePerLesson ?? rate), 0);
 
     return {
       totalLessons,
@@ -92,6 +110,32 @@ export function AttendanceView({
       totalPaid,
       balanceDue,
     };
+  }, [sortedSessions, rate]);
+
+  // Price history breakdown across recorded lessons
+  const priceHistory = useMemo(() => {
+    const tiers = new Map<number, { count: number; minDate: string; maxDate: string }>();
+    for (const session of sortedSessions) {
+      const p = session.ratePerLesson ?? rate;
+      const prev = tiers.get(p);
+      if (!prev) {
+        tiers.set(p, { count: 1, minDate: session.date, maxDate: session.date });
+      } else {
+        prev.count += 1;
+        if (session.date < prev.minDate) prev.minDate = session.date;
+        if (session.date > prev.maxDate) prev.maxDate = session.date;
+      }
+    }
+
+    return Array.from(tiers.entries())
+      .map(([price, details]) => ({
+        price,
+        count: details.count,
+        minDate: details.minDate,
+        maxDate: details.maxDate,
+        isCurrent: price === rate,
+      }))
+      .sort((a, b) => b.price - a.price);
   }, [sortedSessions, rate]);
 
   // Per-student attendance stats
@@ -110,13 +154,14 @@ export function AttendanceView({
     return map;
   }, [sortedSessions]);
 
-  // Add a new lesson session
+  // Add a new lesson session (supports manual price entry)
   async function handleAddLesson(e: React.FormEvent) {
     e.preventDefault();
     if (!newDate) return;
 
     // Check if session for this date already exists
     const existing = sortedSessions.find((s) => s.date === newDate);
+    const enteredRate = Number(lessonPrice) > 0 ? Number(lessonPrice) : rate;
 
     const records = STUDENTS.map((s) => {
       const isPresent = !!presentMap[s.id];
@@ -134,7 +179,7 @@ export function AttendanceView({
       kind: 'attendance',
       date: newDate,
       topic: existing?.topic || `Lesson on ${newDate}`,
-      ratePerLesson: rate,
+      ratePerLesson: enteredRate,
       paid: existing ? isSessionPaid(existing) : false,
       records,
     };
@@ -173,7 +218,7 @@ export function AttendanceView({
     });
   }
 
-  // Toggle paid / unpaid on an existing lesson (800 CZK)
+  // Toggle paid / unpaid on an existing lesson
   async function toggleSessionPaid(session: AttendanceEntry) {
     if (role !== 'Teacher') return;
     const currentPaid = isSessionPaid(session);
@@ -189,6 +234,30 @@ export function AttendanceView({
       paid: nextPaid,
       records: updatedRecords,
     });
+  }
+
+  // Inline edit price of an existing session
+  function handleStartEditPrice(session: AttendanceEntry) {
+    if (role !== 'Teacher') return;
+    setEditingPriceSessionId(session.id);
+    setEditingPriceInput(String(session.ratePerLesson ?? rate));
+  }
+
+  async function handleSaveSessionPrice(session: AttendanceEntry) {
+    if (role !== 'Teacher') return;
+    const val = Number(editingPriceInput);
+    if (isNaN(val) || val <= 0) return;
+
+    await onSaveAttendance({
+      ...session,
+      ratePerLesson: val,
+    });
+    setEditingPriceSessionId(null);
+  }
+
+  function handleCancelEditPrice() {
+    setEditingPriceSessionId(null);
+    setEditingPriceInput('');
   }
 
   // Mark all attended sessions as paid
@@ -220,9 +289,20 @@ export function AttendanceView({
 
   // Copy quick invoice statement for parents
   function handleCopyInvoice() {
+    const studentCount = STUDENTS.length || 3;
+    const perStudentCurrent = Math.round(rate / studentCount);
+
+    const historyLines = priceHistory.map((h) => {
+      const perStudent = Math.round(h.price / studentCount);
+      const dateSpan =
+        h.minDate === h.maxDate ? h.minDate : `${h.minDate} to ${h.maxDate}`;
+      return `  • ${h.price} ${currency} / lesson (${perStudent} ${currency}/student) · ${h.count} ${h.count === 1 ? 'lesson' : 'lessons'}${h.isCurrent ? ' [CURRENT RATE]' : ` [PAST RATE · ${dateSpan}]`}`;
+    });
+
     const lines: string[] = [
       `📋 Little Steps · Lesson Attendance & Payments`,
-      `Rate: ${rate} ${currency} / lesson (flat group fee · does not matter how many kids attend)`,
+      `Current Rate: ${rate} ${currency} / lesson (${perStudentCurrent} ${currency} each student · flat group fee)`,
+      ...(priceHistory.length > 1 ? [`Price History:`, ...historyLines] : []),
       `Total Lessons: ${overallTotals.totalLessons} (${overallTotals.totalCharged.toLocaleString()} ${currency})`,
       `Paid Lessons:  ${overallTotals.paidLessons} (${overallTotals.totalPaid.toLocaleString()} ${currency})`,
       `Outstanding Balance: ${overallTotals.balanceDue.toLocaleString()} ${currency} (${overallTotals.unpaidLessons} unpaid ${overallTotals.unpaidLessons === 1 ? 'lesson' : 'lessons'})`,
@@ -236,6 +316,7 @@ export function AttendanceView({
       `Lesson Dates:`,
       ...sortedSessions.map((session) => {
         const paid = isSessionPaid(session);
+        const sessionRate = session.ratePerLesson ?? rate;
         const presentNames = session.records
           .filter((r) => r.status === 'present' || r.status === 'late')
           .map((r) => r.studentName);
@@ -250,7 +331,7 @@ export function AttendanceView({
             ? `Present: ${presentNames.join(', ')}${absentNames.length > 0 ? ` (Absent: ${absentNames.join(', ')})` : ''}`
             : 'No students present';
 
-        return `  • ${session.date}: ${attendanceSummary} · ${rate} ${currency} [${paid ? 'PAID ✓' : 'UNPAID'}]`;
+        return `  • ${session.date}: ${attendanceSummary} · ${sessionRate} ${currency} [${paid ? 'PAID ✓' : 'UNPAID'}]`;
       }),
     ];
 
@@ -274,7 +355,7 @@ export function AttendanceView({
         </h1>
         <p style={{ color: '#6d7f6c', fontSize: '13px' }}>
           {role === 'Teacher'
-            ? 'Tick who is present for each lesson date, then mark paid when payment is received. (800 CZK flat per lesson — does not matter how many kids attend)'
+            ? 'Tick who is present for each lesson date, then mark paid when payment is received. (900 CZK flat per lesson — 300 CZK each student · does not matter how many kids attend)'
             : 'Review the lessons you attended and payment status.'}
         </p>
       </div>
@@ -444,15 +525,103 @@ export function AttendanceView({
           }}
         >
           <div>
-            <div style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.04em', color: '#7a8e7a', fontWeight: 700 }}>
-              Lesson Rate
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '4px' }}>
+              <div style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.04em', color: '#7a8e7a', fontWeight: 700 }}>
+                Lesson Rate & Price History
+              </div>
+              <span
+                style={{
+                  fontSize: '11px',
+                  fontWeight: 700,
+                  color: '#286654',
+                  background: '#eaf4e8',
+                  padding: '2px 8px',
+                  borderRadius: '10px',
+                }}
+              >
+                {Math.round(rate / (STUDENTS.length || 3))} {currency} / student
+              </span>
             </div>
-            <strong style={{ fontSize: '20px', color: '#273f3b', marginTop: '2px', display: 'block' }}>
-              {rate} {currency} <span style={{ fontSize: '12px', fontWeight: 500, color: '#7a8e7a' }}>/ lesson</span>
+
+            <strong style={{ fontSize: '20px', color: '#273f3b', marginTop: '4px', display: 'block' }}>
+              {rate} {currency} <span style={{ fontSize: '12px', fontWeight: 500, color: '#7a8e7a' }}>/ lesson (flat group fee)</span>
             </strong>
             <p style={{ fontSize: '12px', color: '#6d7f6c', margin: '4px 0 0' }}>
-              Flat group fee — does not matter how many kids attend.
+              {rate} {currency} per lesson ({Math.round(rate / (STUDENTS.length || 3))} {currency} each student) · does not matter how many kids attend.
             </p>
+          </div>
+
+          {/* Price History breakdown */}
+          <div
+            style={{
+              background: '#f9fbf8',
+              border: '1px solid #e5ece0',
+              borderRadius: '8px',
+              padding: '10px 12px',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '6px',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '11px', fontWeight: 700, color: '#4a604f' }}>
+              <History size={12} style={{ color: '#286654' }} />
+              <span>Price History:</span>
+            </div>
+
+            {priceHistory.map((h) => {
+              const perStudent = Math.round(h.price / (STUDENTS.length || 3));
+              const dateSpan =
+                h.minDate === h.maxDate ? h.minDate : `${h.minDate} – ${h.maxDate}`;
+              return (
+                <div
+                  key={h.price}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    fontSize: '11px',
+                    color: '#495d4d',
+                    padding: '2px 0',
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                    <strong>{h.price} {currency}</strong>
+                    <span style={{ color: '#7c907e' }}>({perStudent} {currency}/student)</span>
+                    {h.isCurrent ? (
+                      <span
+                        style={{
+                          background: '#e4f3e0',
+                          color: '#286654',
+                          padding: '1px 5px',
+                          borderRadius: '4px',
+                          fontWeight: 700,
+                          fontSize: '10px',
+                        }}
+                      >
+                        Current
+                      </span>
+                    ) : (
+                      <span
+                        style={{
+                          background: '#fcf3e1',
+                          color: '#7b5719',
+                          padding: '1px 5px',
+                          borderRadius: '4px',
+                          fontWeight: 600,
+                          fontSize: '10px',
+                        }}
+                        title={dateSpan}
+                      >
+                        Past ({dateSpan})
+                      </span>
+                    )}
+                  </div>
+                  <span style={{ color: '#7a8e7a', fontWeight: 500 }}>
+                    {h.count} {h.count === 1 ? 'lesson' : 'lessons'}
+                  </span>
+                </div>
+              );
+            })}
           </div>
 
           <div style={{ marginTop: 'auto', paddingTop: '4px' }}>
@@ -491,7 +660,7 @@ export function AttendanceView({
             marginBottom: '24px',
             display: 'flex',
             alignItems: 'center',
-            gap: '18px',
+            gap: '16px',
             flexWrap: 'wrap',
           }}
         >
@@ -513,7 +682,39 @@ export function AttendanceView({
             />
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap' }}>
+          {/* Manual Lesson Price Entry */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <strong style={{ fontSize: '13px', color: '#273f3b' }}>Price:</strong>
+            <div style={{ display: 'inline-flex', alignItems: 'center', background: '#fff', border: '1px solid #cedbc9', borderRadius: '6px', padding: '0 8px' }}>
+              <input
+                type="number"
+                min="0"
+                step="50"
+                required
+                value={lessonPrice}
+                onChange={(e) => setLessonPrice(e.target.value)}
+                style={{
+                  width: '65px',
+                  border: 'none',
+                  outline: 'none',
+                  background: 'transparent',
+                  padding: '7px 0',
+                  fontSize: '13px',
+                  fontWeight: 700,
+                  color: '#273f3b',
+                  textAlign: 'right',
+                }}
+              />
+              <span style={{ fontSize: '12px', fontWeight: 600, color: '#6d7f6c', marginLeft: '4px' }}>
+                {currency}
+              </span>
+            </div>
+            <span style={{ fontSize: '11px', color: '#657a68' }}>
+              ({STUDENTS.length > 0 ? Math.round(Number(lessonPrice || 0) / STUDENTS.length) : 0} {currency}/student)
+            </span>
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
             <span style={{ fontSize: '12px', fontWeight: 600, color: '#4d6353' }}>Who attended?</span>
             {STUDENTS.map((s) => (
               <label
@@ -562,7 +763,7 @@ export function AttendanceView({
             }}
           >
             <Plus size={14} />
-            + Record Lesson ({rate} {currency})
+            + Record Lesson ({Number(lessonPrice) > 0 ? Number(lessonPrice) : rate} {currency})
           </button>
         </form>
       )}
@@ -580,7 +781,7 @@ export function AttendanceView({
         >
           <strong style={{ fontSize: '14px', color: '#273f3b' }}>Attendance & Payment History</strong>
           <span style={{ fontSize: '11px', color: '#7a8c79' }}>
-            {sortedSessions.length} {sortedSessions.length === 1 ? 'lesson date' : 'lesson dates'} logged · {rate} {currency} flat / lesson
+            {sortedSessions.length} {sortedSessions.length === 1 ? 'lesson date' : 'lesson dates'} logged · Current rate: {rate} {currency} flat / lesson ({Math.round(rate / (STUDENTS.length || 3))} {currency} each)
           </span>
         </div>
 
@@ -600,6 +801,9 @@ export function AttendanceView({
               });
 
               const paid = isSessionPaid(session);
+              const sessionRate = session.ratePerLesson ?? rate;
+              const sessionPerStudent = Math.round(sessionRate / (STUDENTS.length || 3));
+              const isEditingPrice = editingPriceSessionId === session.id;
 
               return (
                 <div
@@ -662,8 +866,144 @@ export function AttendanceView({
                       })}
                   </div>
 
-                  {/* Single Lesson Fee & Payment Button (800 CZK) */}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  {/* Lesson Price & Payment Status */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                    {/* Manual Price Display & Inline Editor */}
+                    {isEditingPrice ? (
+                      <div
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '4px',
+                          background: '#fff',
+                          padding: '3px 6px',
+                          border: '1px solid #7cb372',
+                          borderRadius: '6px',
+                        }}
+                      >
+                        <input
+                          type="number"
+                          min="0"
+                          step="50"
+                          value={editingPriceInput}
+                          onChange={(e) => setEditingPriceInput(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              handleSaveSessionPrice(session);
+                            }
+                            if (e.key === 'Escape') {
+                              handleCancelEditPrice();
+                            }
+                          }}
+                          autoFocus
+                          style={{
+                            width: '58px',
+                            padding: '2px 4px',
+                            fontSize: '12px',
+                            fontWeight: 700,
+                            border: '1px solid #cedbc9',
+                            borderRadius: '4px',
+                            textAlign: 'right',
+                          }}
+                        />
+                        <span style={{ fontSize: '11px', color: '#6d7f6c' }}>{currency}</span>
+                        <button
+                          type="button"
+                          onClick={() => handleSaveSessionPrice(session)}
+                          disabled={busy}
+                          style={{
+                            background: '#286654',
+                            color: '#fff',
+                            border: 'none',
+                            borderRadius: '4px',
+                            padding: '3px 6px',
+                            cursor: 'pointer',
+                            fontSize: '11px',
+                            fontWeight: 700,
+                          }}
+                          title="Save price for this lesson"
+                        >
+                          <Check size={11} />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleCancelEditPrice}
+                          style={{
+                            background: '#f0f3ee',
+                            color: '#657766',
+                            border: '1px solid #d2ded0',
+                            borderRadius: '4px',
+                            padding: '3px 6px',
+                            cursor: 'pointer',
+                            fontSize: '11px',
+                          }}
+                          title="Cancel"
+                        >
+                          <X size={11} />
+                        </button>
+                      </div>
+                    ) : (
+                      <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                        <span
+                          style={{
+                            fontSize: '11px',
+                            fontWeight: 700,
+                            color: '#344738',
+                            background: sessionRate === rate ? '#f2f7ef' : '#faf5e9',
+                            border: `1px solid ${sessionRate === rate ? '#d5e4d2' : '#eedec0'}`,
+                            padding: '3px 8px',
+                            borderRadius: '6px',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                          }}
+                          title={`Lesson Fee: ${sessionRate} ${currency} (${sessionPerStudent} ${currency}/student)`}
+                        >
+                          {sessionRate} {currency}
+                          <span style={{ fontSize: '10px', color: '#7a8e7a', fontWeight: 500 }}>
+                            ({sessionPerStudent}/st)
+                          </span>
+                          {sessionRate !== rate && (
+                            <span
+                              style={{
+                                fontSize: '9px',
+                                background: '#edd39d',
+                                color: '#745417',
+                                padding: '1px 4px',
+                                borderRadius: '3px',
+                                fontWeight: 700,
+                              }}
+                            >
+                              Past
+                            </span>
+                          )}
+                        </span>
+
+                        {role === 'Teacher' && (
+                          <button
+                            type="button"
+                            className="text-button"
+                            onClick={() => handleStartEditPrice(session)}
+                            disabled={busy}
+                            style={{
+                              padding: '3px 5px',
+                              color: '#526e57',
+                              fontSize: '11px',
+                              borderRadius: '4px',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              cursor: 'pointer',
+                            }}
+                            title="Edit price for this lesson"
+                          >
+                            <Edit2 size={12} />
+                          </button>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Single Lesson Fee & Payment Button */}
                     <button
                       type="button"
                       onClick={() => toggleSessionPaid(session)}
@@ -687,12 +1027,12 @@ export function AttendanceView({
                       {paid ? (
                         <>
                           <Check size={12} />
-                          ✓ Paid · {rate} {currency}
+                          ✓ Paid · {sessionRate} {currency}
                         </>
                       ) : (
                         <>
                           <Clock size={12} />
-                          Unpaid ({rate} {currency})
+                          Unpaid ({sessionRate} {currency})
                         </>
                       )}
                     </button>

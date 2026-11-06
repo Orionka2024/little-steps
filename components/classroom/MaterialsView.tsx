@@ -53,7 +53,37 @@ export function MaterialsView({
         {filteredResources.map((r) => (
           <button className="material-card" key={r.id} onClick={() => onOpenResource(r)}>
             <div className={`material-art ${r.color}`}>{r.icon || '📖'}</div>
-            <small>{r.type}</small>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', margin: '4px 13px 0', flexWrap: 'wrap' }}>
+              <small style={{ margin: 0 }}>{r.type}</small>
+              {r.googleDrive && (
+                <span
+                  style={{
+                    fontSize: '9px',
+                    padding: '1px 6px',
+                    borderRadius: '4px',
+                    background: '#e8f0fe',
+                    color: '#1a73e8',
+                    fontWeight: 700,
+                  }}
+                >
+                  📁 Drive
+                </span>
+              )}
+              {r.file && (
+                <span
+                  style={{
+                    fontSize: '9px',
+                    padding: '1px 6px',
+                    borderRadius: '4px',
+                    background: '#eaf2ec',
+                    color: '#286654',
+                    fontWeight: 700,
+                  }}
+                >
+                  📎 File
+                </span>
+              )}
+            </div>
             <h3>{r.title}</h3>
             <span className="text-button">
               Open resource <ArrowUpRight size={17} />

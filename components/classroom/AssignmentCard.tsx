@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { Clock, Check, ArrowUpRight } from 'lucide-react';
+import { Clock, Check, ArrowUpRight, Pencil, Trash2 } from 'lucide-react';
 import type { AssignmentEntry, HomeworkStatus, Role } from '../../lib/types';
 import { STUDENTS } from '../../lib/types';
 
@@ -12,6 +12,8 @@ interface AssignmentCardProps {
   studentSubmissions?: Record<string, HomeworkStatus>;
   onOpen: (assignment: AssignmentEntry) => void;
   onTogglePost?: (assignment: AssignmentEntry, e: React.MouseEvent) => void;
+  onEdit?: (assignment: AssignmentEntry, e: React.MouseEvent) => void;
+  onDelete?: (assignment: AssignmentEntry, e: React.MouseEvent) => void;
 }
 
 export function AssignmentCard({
@@ -21,6 +23,8 @@ export function AssignmentCard({
   studentSubmissions,
   onOpen,
   onTogglePost,
+  onEdit,
+  onDelete,
 }: AssignmentCardProps) {
   const formattedDate = new Date(`${assignment.due}T12:00:00`).toLocaleDateString('en-GB', {
     month: 'short',
@@ -59,6 +63,8 @@ export function AssignmentCard({
               marginBottom: '10px',
               paddingBottom: '8px',
               borderBottom: '1px solid #f0f3ed',
+              gap: '6px',
+              flexWrap: 'wrap',
             }}
           >
             <span
@@ -78,32 +84,86 @@ export function AssignmentCard({
               {assignment.posted ? '📢 Posted' : '🔒 Unposted'}
             </span>
 
-            {onTogglePost && (
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onTogglePost(assignment, e);
-                }}
-                style={{
-                  background: assignment.posted ? '#f4f6f3' : '#286654',
-                  color: assignment.posted ? '#4c5c53' : '#ffffff',
-                  border: assignment.posted ? '1px solid #d2ded7' : 'none',
-                  borderRadius: '6px',
-                  fontSize: '11px',
-                  padding: '3px 9px',
-                  cursor: 'pointer',
-                  fontWeight: 600,
-                }}
-                title={
-                  assignment.posted
-                    ? 'Unpost homework (hide from students)'
-                    : 'Post homework (make visible to students)'
-                }
-              >
-                {assignment.posted ? 'Unpost' : 'Post to class'}
-              </button>
-            )}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+              {onEdit && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onEdit(assignment, e);
+                  }}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '3px',
+                    background: '#f4f6f3',
+                    color: '#285844',
+                    border: '1px solid #cfdad3',
+                    borderRadius: '6px',
+                    fontSize: '11px',
+                    padding: '3px 8px',
+                    cursor: 'pointer',
+                    fontWeight: 600,
+                  }}
+                  title="Edit assignment details, due date, or instructions"
+                >
+                  <Pencil size={11} /> Edit
+                </button>
+              )}
+
+              {onTogglePost && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onTogglePost(assignment, e);
+                  }}
+                  style={{
+                    background: assignment.posted ? '#f4f6f3' : '#286654',
+                    color: assignment.posted ? '#4c5c53' : '#ffffff',
+                    border: assignment.posted ? '1px solid #d2ded7' : 'none',
+                    borderRadius: '6px',
+                    fontSize: '11px',
+                    padding: '3px 9px',
+                    cursor: 'pointer',
+                    fontWeight: 600,
+                  }}
+                  title={
+                    assignment.posted
+                      ? 'Unpost homework (hide from students)'
+                      : 'Post homework (make visible to students)'
+                  }
+                >
+                  {assignment.posted ? 'Unpost' : 'Post to class'}
+                </button>
+              )}
+
+              {onDelete && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onDelete(assignment, e);
+                  }}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '3px',
+                    background: '#fff2f2',
+                    color: '#a83232',
+                    border: '1px solid #fad7d7',
+                    borderRadius: '6px',
+                    fontSize: '11px',
+                    padding: '3px 7px',
+                    cursor: 'pointer',
+                    fontWeight: 600,
+                  }}
+                  title="Delete this assignment"
+                >
+                  <Trash2 size={11} />
+                </button>
+              )}
+            </div>
           </div>
         )}
 

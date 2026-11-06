@@ -338,12 +338,14 @@ test('DeletedAttendancePayloadSchema validates tombstones in EntryPayloadSchema'
     id: 'del_att-1',
     kind: 'deleted_attendance',
     targetId: 'att-1',
+    date: '2026-10-12',
   };
   const result = EntryPayloadSchema.safeParse(tombstone);
   assert.ok(result.success);
   if (result.success) {
     assert.strictEqual(result.data.kind, 'deleted_attendance');
     assert.strictEqual((result.data as { targetId: string }).targetId, 'att-1');
+    assert.strictEqual((result.data as { date?: string }).date, '2026-10-12');
   }
 });
 
@@ -414,6 +416,121 @@ test('upsertStoredRecords and batch attendance entries are safely validated and 
   assert.ok(found1, 'att-batch-1 should be stored');
   assert.ok(found2, 'att-batch-2 should be stored');
   assert.strictEqual((found1 as { ratePerLesson?: number }).ratePerLesson, 800);
+
+  // Clean up test batch entries so they do not pollute storage
+  const { deleteStoredRecord } = await import('../lib/storage.ts');
+  await deleteStoredRecord('att-batch-1', 'local_seedy');
+  await deleteStoredRecord('att-batch-2', 'local_seedy');
 });
+
+test('INITIAL_BILLING_CONFIG defaultRate is 900 CZK with 300 CZK each student', () => {
+  assert.strictEqual(INITIAL_BILLING_CONFIG.defaultRate, 900);
+  assert.strictEqual(INITIAL_BILLING_CONFIG.currency, 'CZK');
+  assert.strictEqual(INITIAL_BILLING_CONFIG.profiles.hajun.ratePerLesson, 300);
+  assert.strictEqual(INITIAL_BILLING_CONFIG.profiles.mark.ratePerLesson, 300);
+  assert.strictEqual(INITIAL_BILLING_CONFIG.profiles.juwon.ratePerLesson, 300);
+
+  // BillingConfigPayloadSchema default is 900
+  const parsedDefault = BillingConfigPayloadSchema.parse({
+    id: 'billing_global',
+    kind: 'billing_config',
+  });
+  assert.strictEqual(parsedDefault.defaultRate, 900);
+});
+
+test('AttendancePayloadSchema defaults to 900 CZK and validates manual lesson price entry', async () => {
+  const { upsertStoredRecord, getStoredRecords, deleteStoredRecord } = await import('../lib/storage.ts');
+
+  // 1. Session without ratePerLesson defaults to 900
+  const defaultSession = {
+    id: 'att-test-default-rate',
+    kind: 'attendance',
+    date: '2026-11-23',
+    records: [
+      { studentId: 'hajun', studentName: 'Hajun', status: 'present', chargeable: true },
+    ],
+  };
+  const parsedDefault = AttendancePayloadSchema.parse(defaultSession);
+  assert.strictEqual(parsedDefault.ratePerLesson, 900);
+
+  // 2. Manual teacher entry with custom lesson price (e.g. 950 CZK)
+  const customSession = {
+    id: 'att-test-custom-price',
+    kind: 'attendance',
+    date: '2026-11-30',
+    topic: 'Advanced Essay Workshop',
+    ratePerLesson: 950,
+    paid: false,
+    records: [
+      { studentId: 'hajun', studentName: 'Hajun', status: 'present', chargeable: true, paid: false },
+      { studentId: 'mark', studentName: 'Mark', status: 'present', chargeable: true, paid: false },
+      { studentId: 'juwon', studentName: 'Juwon', status: 'present', chargeable: true, paid: false },
+    ],
+  };
+  const parsedCustom = EntryPayloadSchema.safeParse(customSession);
+  assert.ok(parsedCustom.success);
+  if (parsedCustom.success) {
+    assert.strictEqual((parsedCustom.data as { ratePerLesson?: number }).ratePerLesson, 950);
+  }
+
+  // Persist custom price session to storage and retrieve
+  await upsertStoredRecord(customSession.id, 'local_seedy', customSession.kind, customSession as unknown as Record<string, unknown>);
+  const stored = await getStoredRecords('local_seedy');
+  const found = stored.find((s) => s.id === customSession.id || s.id === `local_seedy:${customSession.id}`);
+  assert.ok(found);
+  assert.strictEqual((found as { ratePerLesson?: number }).ratePerLesson, 950);
+
+  // Clean up
+  await deleteStoredRecord(customSession.id, 'local_seedy');
+});
+
+test('Price history calculation preserves historical rates (800 CZK) alongside new rates (900 CZK) and custom rates', () => {
+  // Simulate a session history:
+  // - 3 paid lessons at 800 CZK (historical) = 2,400 CZK
+  // - 1 unpaid lesson at 800 CZK (historical) = 800 CZK
+  // - 1 new unpaid lesson at 900 CZK = 900 CZK
+  // - 1 new paid lesson at 900 CZK = 900 CZK
+  // - 1 special workshop at 1000 CZK (unpaid) = 1000 CZK
+  const sessions = [
+    { id: '1', date: '2026-10-12', ratePerLesson: 800, paid: true },
+    { id: '2', date: '2026-10-19', ratePerLesson: 800, paid: true },
+    { id: '3', date: '2026-10-26', ratePerLesson: 800, paid: true },
+    { id: '4', date: '2026-11-02', ratePerLesson: 800, paid: false },
+    { id: '5', date: '2026-11-09', ratePerLesson: 900, paid: false },
+    { id: '6', date: '2026-11-16', ratePerLesson: 900, paid: true },
+    { id: '7', date: '2026-11-23', ratePerLesson: 1000, paid: false },
+  ];
+
+  const currentDefaultRate = 900;
+
+  const totalLessons = sessions.length;
+  const paidLessons = sessions.filter((s) => s.paid).length;
+  const unpaidLessons = sessions.filter((s) => !s.paid).length;
+
+  const totalCharged = sessions.reduce((sum, s) => sum + (s.ratePerLesson ?? currentDefaultRate), 0);
+  const totalPaid = sessions.filter((s) => s.paid).reduce((sum, s) => sum + (s.ratePerLesson ?? currentDefaultRate), 0);
+  const balanceDue = sessions.filter((s) => !s.paid).reduce((sum, s) => sum + (s.ratePerLesson ?? currentDefaultRate), 0);
+
+  // 800*4 + 900*2 + 1000 = 3200 + 1800 + 1000 = 6000
+  assert.strictEqual(totalLessons, 7);
+  assert.strictEqual(paidLessons, 4);
+  assert.strictEqual(unpaidLessons, 3);
+  assert.strictEqual(totalCharged, 6000);
+  // Paid: 800*3 + 900 = 2400 + 900 = 3300
+  assert.strictEqual(totalPaid, 3300);
+  // Due: 800 (lesson 4) + 900 (lesson 5) + 1000 (lesson 7) = 2700
+  assert.strictEqual(balanceDue, 2700);
+
+  // Verify that price history groups into distinct tiers: 1000, 900, 800
+  const tiers = new Map<number, number>();
+  for (const s of sessions) {
+    const rate = s.ratePerLesson ?? currentDefaultRate;
+    tiers.set(rate, (tiers.get(rate) || 0) + 1);
+  }
+  assert.strictEqual(tiers.get(800), 4, '4 lessons at 800 CZK historical rate');
+  assert.strictEqual(tiers.get(900), 2, '2 lessons at 900 CZK standard rate');
+  assert.strictEqual(tiers.get(1000), 1, '1 lesson at 1000 CZK custom rate');
+});
+
 
 

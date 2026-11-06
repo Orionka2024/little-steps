@@ -17,6 +17,8 @@ interface HomeViewProps {
   onOpenResource: (resource: MaterialEntry) => void;
   onNavigate: (page: string) => void;
   onTogglePost?: (assignment: AssignmentEntry, e: React.MouseEvent) => void;
+  onEditAssignment?: (assignment: AssignmentEntry, e: React.MouseEvent) => void;
+  onDeleteAssignment?: (assignment: AssignmentEntry, e: React.MouseEvent) => void;
 }
 
 export function HomeView({
@@ -31,12 +33,18 @@ export function HomeView({
   onOpenResource,
   onNavigate,
   onTogglePost,
+  onEditAssignment,
+  onDeleteAssignment,
 }: HomeViewProps) {
   const totalCount = assignments.length;
   const progressPercent =
     totalCount > 0 ? Math.min(100, Math.round((completedCount / totalCount) * 100)) : 0;
   const nextAssignment =
-    totalCount > 0 ? assignments.find((a) => getStatus(a) === 'To do') || assignments[0] : null;
+    totalCount > 0
+      ? assignments.find((a) => (a.posted ?? true) && getStatus(a) === 'To do') ||
+        assignments.find((a) => a.posted ?? true) ||
+        assignments[0]
+      : null;
 
   return (
     <>
@@ -118,7 +126,7 @@ export function HomeView({
           </div>
           <div className="cards">
             {assignments.length > 0 ? (
-              assignments.slice(0, 2).map((a) => (
+              assignments.map((a) => (
                 <AssignmentCard
                   key={a.id}
                   assignment={a}
@@ -127,6 +135,8 @@ export function HomeView({
                   studentSubmissions={getStudentSubmissions(a)}
                   onOpen={onOpenAssignment}
                   onTogglePost={onTogglePost}
+                  onEdit={onEditAssignment}
+                  onDelete={onDeleteAssignment}
                 />
               ))
             ) : (
@@ -224,11 +234,27 @@ export function HomeView({
       </div>
 
       <div className="resource-row">
-        {resources.slice(0, 3).map((r) => (
+        {resources.map((r) => (
           <button className="resource" key={r.id} onClick={() => onOpenResource(r)}>
             <span className={`resource-icon ${r.color}`}>{r.icon || '📖'}</span>
             <span>
-              <small>{r.type}</small>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <small>{r.type}</small>
+                {r.googleDrive && (
+                  <span
+                    style={{
+                      fontSize: '9px',
+                      padding: '1px 5px',
+                      borderRadius: '4px',
+                      background: '#e8f0fe',
+                      color: '#1a73e8',
+                      fontWeight: 600,
+                    }}
+                  >
+                    Drive
+                  </span>
+                )}
+              </div>
               <strong>{r.title}</strong>
             </span>
             <ChevronRight size={17} />

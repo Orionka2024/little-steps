@@ -21,11 +21,19 @@ let cachedRecords: StoredRecord[] | null = null;
 let cachedFiles: Map<string, StoredFile> = new Map();
 
 function getStorageDir(): string {
-  // Use /tmp in production serverless (e.g. Vercel), or local .sites-runtime / data in dev
-  if (process.env.VERCEL || process.env.NODE_ENV === 'production') {
+  // Use /tmp in cloud serverless (e.g. Vercel), or persistent .sites-runtime directory
+  if (process.env.VERCEL) {
     return '/tmp';
   }
-  return path.join(process.cwd(), '.sites-runtime');
+  const runtimeDir = path.join(process.cwd(), '.sites-runtime');
+  try {
+    if (!existsSync(runtimeDir)) {
+      mkdirSync(runtimeDir, { recursive: true });
+    }
+    return runtimeDir;
+  } catch {
+    return '/tmp';
+  }
 }
 
 function getRecordsFilePath(): string {
@@ -236,6 +244,35 @@ export async function deleteStoredRecordsByStudent(
     try {
       const data = JSON.parse(r.payload) as { studentId?: string };
       if (data.studentId === studentId || (!data.studentId && studentId === 'hajun')) {
+        return false;
+      }
+    } catch {
+      // keep
+    }
+    return true;
+  });
+
+  if (filtered.length !== initialLen) {
+    saveRecordsToDisk(filtered);
+  }
+  return initialLen - filtered.length;
+}
+
+export async function deleteStoredRecordsByAssignment(
+  assignmentId: string
+): Promise<number> {
+  const records = loadRecordsFromDisk();
+  const initialLen = records.length;
+  const filtered = records.filter((r) => {
+    if (r.kind !== 'submission') return true;
+    try {
+      const data = JSON.parse(r.payload) as { assignment?: string };
+      if (
+        data.assignment === assignmentId ||
+        r.id.includes(`:${assignmentId}-`) ||
+        r.id.includes(`s-${assignmentId}-`) ||
+        r.id.endsWith(`:${assignmentId}`)
+      ) {
         return false;
       }
     } catch {

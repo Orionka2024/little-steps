@@ -5,6 +5,7 @@ import {
   upsertStoredRecords,
   deleteStoredRecord,
   deleteStoredRecordsByStudent,
+  deleteStoredRecordsByAssignment,
 } from '../../../lib/storage';
 import { EntryPayloadSchema, type ValidatedEntry } from '../../../lib/validation';
 
@@ -77,8 +78,9 @@ export async function POST(req: Request) {
         validated.kind === 'material' ||
         validated.kind === 'attendance' ||
         validated.kind === 'billing_config' ||
-        validated.kind === 'deleted_attendance') &&
-      roleHeader === 'Student'
+        validated.kind === 'deleted_attendance' ||
+        validated.kind === 'deleted_assignment') &&
+      user.role !== 'Teacher'
     ) {
       return Response.json(
         { error: 'Only teachers can create or modify assignments, materials, or attendance.' },
@@ -87,6 +89,16 @@ export async function POST(req: Request) {
     }
 
     validatedList.push(validated);
+  }
+
+  // Clear tombstones if an attendance record is saved
+  for (const item of validatedList) {
+    if (item.kind === 'attendance') {
+      await deleteStoredRecord(`del_${item.id}`, 'local_seedy');
+      if (item.date) {
+        await deleteStoredRecord(`del_att-${item.date}`, 'local_seedy');
+      }
+    }
   }
 
   if (validatedList.length === 1 && !isBatch) {
@@ -120,18 +132,20 @@ export async function DELETE(req: Request) {
     );
   }
 
+  // Only teachers are authorized to delete classroom records, assignments, materials, or submissions
+  if (user.role !== 'Teacher') {
+    return Response.json(
+      { error: 'Only teachers can delete classroom records.' },
+      { status: 403 }
+    );
+  }
+
   const url = new URL(req.url);
   const id = url.searchParams.get('id');
+  const date = url.searchParams.get('date');
   const studentId = url.searchParams.get('studentId');
 
   if (studentId) {
-    // Only teacher or the matching student can clear student submissions
-    if (user.role !== 'Teacher' && user.studentId !== studentId) {
-      return Response.json(
-        { error: 'You are not authorized to clear this student data.' },
-        { status: 403 }
-      );
-    }
     const count = await deleteStoredRecordsByStudent(studentId);
     return Response.json({ ok: true, removed: count });
   }
@@ -144,7 +158,17 @@ export async function DELETE(req: Request) {
         id: `del_${id}`,
         kind: 'deleted_attendance',
         targetId: id,
+        ...(date ? { date } : {}),
       });
+    } else {
+      // Record tombstone for deleted assignment so initial seed data doesn't resurrect it
+      await upsertStoredRecord(`del_asgn_${id}`, 'local_seedy', 'deleted_assignment', {
+        id: `del_asgn_${id}`,
+        kind: 'deleted_assignment',
+        targetId: id,
+      });
+      // Clean up student submissions associated with this assignment
+      await deleteStoredRecordsByAssignment(id);
     }
     return Response.json({ ok: true, deleted: success });
   }

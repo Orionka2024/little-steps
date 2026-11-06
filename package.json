@@ -13,7 +13,7 @@
     "build:vinext": "node scripts/run-framework.mjs build",
     "start": "next start",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
-    "test": "node --experimental-strip-types --test tests/validation.test.ts",
+    "test": "node --experimental-strip-types --test tests/*.test.ts",
     "db:generate": "drizzle-kit generate"
   },
   "dependencies": {

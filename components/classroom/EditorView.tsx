@@ -11,6 +11,7 @@ import {
   Sparkles,
   Trash2,
   PenTool,
+  Pencil,
 } from 'lucide-react';
 import type {
   AssignmentEntry,
@@ -54,6 +55,8 @@ interface EditorViewProps {
   onBack: () => void;
   onOpenWritingGuide: () => void;
   onTogglePost?: (assignment: AssignmentEntry) => void;
+  onEditAssignment?: (assignment: AssignmentEntry) => void;
+  onDeleteAssignment?: (assignment: AssignmentEntry) => void;
 }
 
 export function EditorView({
@@ -85,6 +88,8 @@ export function EditorView({
   onBack,
   onOpenWritingGuide,
   onTogglePost,
+  onEditAssignment,
+  onDeleteAssignment,
 }: EditorViewProps) {
   const [markupMode, setMarkupMode] = useState<boolean>(false);
   const [showStudentMarkup, setShowStudentMarkup] = useState<boolean>(true);
@@ -156,24 +161,77 @@ export function EditorView({
             </div>
           </div>
 
-          {onTogglePost && (
-            <button
-              type="button"
-              onClick={() => onTogglePost(assignment)}
-              style={{
-                fontSize: '12px',
-                padding: '8px 14px',
-                fontWeight: 600,
-                cursor: 'pointer',
-                borderRadius: '7px',
-                background: assignment.posted ? '#ffffff' : '#286654',
-                color: assignment.posted ? '#34473d' : '#ffffff',
-                border: assignment.posted ? '1px solid #cfdad3' : '1px solid #286654',
-              }}
-            >
-              {assignment.posted ? 'Unpost (Hide from students)' : 'Post to classroom now ✦'}
-            </button>
-          )}
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+            {onEditAssignment && (
+              <button
+                type="button"
+                onClick={() => onEditAssignment(assignment)}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '5px',
+                  fontSize: '12px',
+                  padding: '8px 14px',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  borderRadius: '7px',
+                  background: '#ffffff',
+                  color: '#285844',
+                  border: '1px solid #cfdad3',
+                }}
+                title="Edit assignment details, prompt, due date, or instructions"
+              >
+                <Pencil size={13} /> Edit assignment
+              </button>
+            )}
+
+            {onTogglePost && (
+              <button
+                type="button"
+                onClick={() => onTogglePost(assignment)}
+                style={{
+                  fontSize: '12px',
+                  padding: '8px 14px',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  borderRadius: '7px',
+                  background: assignment.posted ? '#ffffff' : '#286654',
+                  color: assignment.posted ? '#34473d' : '#ffffff',
+                  border: assignment.posted ? '1px solid #cfdad3' : '1px solid #286654',
+                }}
+                title={
+                  assignment.posted
+                    ? 'Unpost homework (hide from students)'
+                    : 'Post homework (make visible to students)'
+                }
+              >
+                {assignment.posted ? 'Unpost (Hide from students)' : 'Post to classroom now ✦'}
+              </button>
+            )}
+
+            {onDeleteAssignment && (
+              <button
+                type="button"
+                onClick={() => onDeleteAssignment(assignment)}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '5px',
+                  fontSize: '12px',
+                  padding: '8px 14px',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  borderRadius: '7px',
+                  background: '#fff2f2',
+                  color: '#a83232',
+                  border: '1px solid #fad7d7',
+                }}
+                title="Delete this assignment and submissions"
+              >
+                <Trash2 size={13} /> Delete
+              </button>
+            )}
+          </div>
         </div>
       )}
 
@@ -458,7 +516,7 @@ export function EditorView({
               </span>
               {role === 'Student' && (
                 <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                  {(submission || draft.length > 0) && onResetSubmission && (
+                  {draft.length > 0 && (
                     <button
                       type="button"
                       style={{
@@ -471,8 +529,8 @@ export function EditorView({
                       }}
                       disabled={busy || !loaded}
                       onClick={() => {
-                        if (confirm('Clear your current draft and start over?')) {
-                          onResetSubmission();
+                        if (confirm('Clear your current unsaved draft text?')) {
+                          onDraftChange('');
                         }
                       }}
                     >

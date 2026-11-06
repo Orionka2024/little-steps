@@ -26,6 +26,14 @@ export interface FileAttachment {
   size: number;
 }
 
+export interface GoogleDriveAttachment {
+  url: string;
+  name?: string;
+  fileId?: string;
+  driveType?: 'document' | 'presentation' | 'spreadsheet' | 'folder' | 'file';
+  embedUrl?: string;
+}
+
 export type ActivityType = 'quiz' | 'word_scramble' | 'connecting_words' | 'flashcards';
 
 export interface FlashCardItem {
@@ -122,6 +130,7 @@ export interface MaterialEntry {
   icon?: string;
   body: string;
   file?: FileAttachment;
+  googleDrive?: GoogleDriveAttachment;
   interactive?: InteractiveActivity;
   localId?: string;
 }
@@ -223,6 +232,14 @@ export interface DeletedAttendanceEntry {
   id: string;
   kind: 'deleted_attendance';
   targetId: string;
+  date?: string;
+  localId?: string;
+}
+
+export interface DeletedAssignmentEntry {
+  id: string;
+  kind: 'deleted_assignment';
+  targetId: string;
   localId?: string;
 }
 
@@ -233,7 +250,8 @@ export type Entry =
   | MessageEntry
   | AttendanceEntry
   | BillingConfigEntry
-  | DeletedAttendanceEntry;
+  | DeletedAttendanceEntry
+  | DeletedAssignmentEntry;
 
 export function isAssignment(entry: Entry): entry is AssignmentEntry {
   return entry.kind === 'assignment';
@@ -261,6 +279,10 @@ export function isBillingConfig(entry: Entry): entry is BillingConfigEntry {
 
 export function isDeletedAttendance(entry: Entry): entry is DeletedAttendanceEntry {
   return entry.kind === 'deleted_attendance';
+}
+
+export function isDeletedAssignment(entry: Entry): entry is DeletedAssignmentEntry {
+  return entry.kind === 'deleted_assignment';
 }
 
 

@@ -1,8 +1,31 @@
 'use client';
 
-import React, { useEffect, useRef, useState } from 'react';
-import { X, Plus, Download, Sparkles, BookOpen, Gamepad2, Trash2, PlusCircle } from 'lucide-react';
-import type { MaterialEntry, Student, AssignmentTaskType } from '../../lib/types';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import {
+  X,
+  Plus,
+  Download,
+  Sparkles,
+  BookOpen,
+  Gamepad2,
+  Trash2,
+  PlusCircle,
+  ExternalLink,
+  Eye,
+  EyeOff,
+  HardDrive,
+  Check,
+} from 'lucide-react';
+import type {
+  MaterialEntry,
+  Student,
+  AssignmentTaskType,
+  AssignmentEntry,
+  FlashCardItem,
+  QuizQuestion,
+  WordScrambleItem,
+} from '../../lib/types';
+import { parseGoogleDriveUrl, getGoogleDriveBadge } from '../../lib/google-drive';
 import { InteractiveActivityContainer } from './interactive/InteractiveActivityContainer';
 
 interface ResourceModalProps {
@@ -20,6 +43,12 @@ export function ResourceModal({
 }: ResourceModalProps) {
   const dialogRef = useRef<HTMLElement>(null);
   const [activeTab, setActiveTab] = useState<'content' | 'interactive'>('content');
+  const [showDrivePreview, setShowDrivePreview] = useState(false);
+
+  const driveBadge = useMemo(
+    () => getGoogleDriveBadge(resource.googleDrive?.driveType),
+    [resource.googleDrive?.driveType]
+  );
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -102,6 +131,122 @@ export function ResourceModal({
           <>
             <div className="resource-content">{resource.body}</div>
 
+            {/* Google Drive Attachment */}
+            {resource.googleDrive && (
+              <div
+                style={{
+                  marginTop: '16px',
+                  background: '#f8fafd',
+                  border: '1px solid #d2e3fc',
+                  borderRadius: '10px',
+                  padding: '12px 14px',
+                }}
+              >
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    flexWrap: 'wrap',
+                    gap: '10px',
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <div
+                      style={{
+                        width: '34px',
+                        height: '34px',
+                        borderRadius: '8px',
+                        background: driveBadge.bg,
+                        border: `1px solid ${driveBadge.borderColor}`,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        fontSize: '18px',
+                        flexShrink: 0,
+                      }}
+                    >
+                      {driveBadge.icon}
+                    </div>
+                    <div>
+                      <strong style={{ fontSize: '13px', color: '#202124', display: 'block' }}>
+                        {resource.googleDrive.name || driveBadge.name}
+                      </strong>
+                      <span style={{ fontSize: '11px', color: '#5f6368' }}>
+                        Google Drive • {driveBadge.name}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                    {resource.googleDrive.embedUrl && (
+                      <button
+                        type="button"
+                        onClick={() => setShowDrivePreview(!showDrivePreview)}
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '5px',
+                          padding: '6px 10px',
+                          fontSize: '11px',
+                          borderRadius: '6px',
+                          border: '1px solid #bad3fc',
+                          background: showDrivePreview ? '#e8f0fe' : '#fff',
+                          color: '#1a73e8',
+                          fontWeight: 600,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        {showDrivePreview ? <EyeOff size={13} /> : <Eye size={13} />}
+                        {showDrivePreview ? 'Hide preview' : 'Preview'}
+                      </button>
+                    )}
+                    <a
+                      href={resource.googleDrive.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '5px',
+                        fontSize: '11px',
+                        padding: '6px 12px',
+                        background: '#1a73e8',
+                        color: '#fff',
+                        borderRadius: '6px',
+                        textDecoration: 'none',
+                        fontWeight: 600,
+                      }}
+                    >
+                      Open in Drive <ExternalLink size={13} />
+                    </a>
+                  </div>
+                </div>
+
+                {showDrivePreview && resource.googleDrive.embedUrl && (
+                  <div
+                    style={{
+                      marginTop: '12px',
+                      borderRadius: '8px',
+                      overflow: 'hidden',
+                      border: '1px solid #d2e3fc',
+                      background: '#fff',
+                    }}
+                  >
+                    <iframe
+                      src={resource.googleDrive.embedUrl}
+                      title={resource.googleDrive.name || 'Google Drive Preview'}
+                      width="100%"
+                      height="380"
+                      style={{ border: 0, display: 'block' }}
+                      allow="autoplay"
+                    />
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Local Computer File Attachment */}
             {resource.file && (
               <a
                 className="primary"
@@ -128,35 +273,68 @@ export function ResourceModal({
 
 interface CreateModalProps {
   type: 'assignment' | 'material';
+  initialAssignment?: AssignmentEntry | null;
   busy: boolean;
   loaded: boolean;
   onClose: () => void;
   onSubmit: (formData: FormData) => void;
 }
 
-export function CreateModal({ type, busy, loaded, onClose, onSubmit }: CreateModalProps) {
+export function CreateModal({
+  type,
+  initialAssignment,
+  busy,
+  loaded,
+  onClose,
+  onSubmit,
+}: CreateModalProps) {
+  const isEditing = Boolean(initialAssignment);
   const dialogRef = useRef<HTMLElement>(null);
-  const [taskFormat, setTaskFormat] = useState<AssignmentTaskType>('essay');
+  const [taskFormat, setTaskFormat] = useState<AssignmentTaskType>(
+    initialAssignment?.taskType ||
+      (initialAssignment?.interactive?.type as AssignmentTaskType) ||
+      'essay'
+  );
   const [activityType, setActivityType] = useState<string>('none');
+  const [posted, setPosted] = useState<boolean>(
+    initialAssignment ? (initialAssignment.posted ?? true) : true
+  );
+
+  // Google Drive & Local file attachment state for materials
+  const [driveUrl, setDriveUrl] = useState('');
+  const [driveName, setDriveName] = useState('');
+  const [localFileName, setLocalFileName] = useState('');
+
+  const driveInfo = useMemo(() => parseGoogleDriveUrl(driveUrl), [driveUrl]);
+  const driveBadge = useMemo(() => getGoogleDriveBadge(driveInfo.driveType), [driveInfo.driveType]);
 
   // Flashcards builder state
-  const [flashcards, setFlashcards] = useState<Array<{ front: string; back: string; hint: string }>>([
-    {
-      front: 'MOMENTOUS',
-      back: 'Of great importance or significance, having a major effect on future events.',
-      hint: 'Adjective - very significant',
-    },
-    {
-      front: 'VIVID',
-      back: 'Producing powerful, detailed, and clear sensory images in the reader’s mind.',
-      hint: 'Sensory adjective',
-    },
-    {
-      front: 'PERSUASIVE',
-      back: 'Convincing someone to believe or do something through compelling reasoning.',
-      hint: 'Rhetorical adjective',
-    },
-  ]);
+  const [flashcards, setFlashcards] = useState<Array<{ front: string; back: string; hint: string }>>(() => {
+    if (initialAssignment?.interactive?.type === 'flashcards' && initialAssignment.interactive.cards?.length) {
+      return (initialAssignment.interactive.cards as FlashCardItem[]).map((c: FlashCardItem) => ({
+        front: c.front,
+        back: c.back,
+        hint: c.hint || '',
+      }));
+    }
+    return [
+      {
+        front: 'MOMENTOUS',
+        back: 'Of great importance or significance, having a major effect on future events.',
+        hint: 'Adjective - very significant',
+      },
+      {
+        front: 'VIVID',
+        back: 'Producing powerful, detailed, and clear sensory images in the reader’s mind.',
+        hint: 'Sensory adjective',
+      },
+      {
+        front: 'PERSUASIVE',
+        back: 'Convincing someone to believe or do something through compelling reasoning.',
+        hint: 'Rhetorical adjective',
+      },
+    ];
+  });
 
   // Quiz / Test builder state
   const [quizQuestions, setQuizQuestions] = useState<
@@ -167,29 +345,48 @@ export function CreateModal({ type, busy, loaded, onClose, onSubmit }: CreateMod
       opt3: string;
       explanation: string;
     }>
-  >([
-    {
-      question: 'Which sentence serves as the strongest opening for an opinion essay?',
-      opt1: 'If our school replaces 30 minutes of desk work with outdoor project time, creativity will soar.',
-      opt2: 'I think that rules are boring and people do not like them.',
-      opt3: 'School is an institution that students attend daily.',
-      explanation: 'A specific, bold thesis statement with cause and effect engages the reader immediately!',
-    },
-    {
-      question: 'What is the primary function of transition words such as "Furthermore" or "In addition"?',
-      opt1: 'To add another supporting argument or detail that strengthens your point',
-      opt2: 'To immediately conclude the entire essay',
-      opt3: 'To indicate an opposing viewpoint or objection',
-      explanation: 'Additive transition words link related arguments together smoothly.',
-    },
-  ]);
+  >(() => {
+    if (initialAssignment?.interactive?.type === 'quiz' && initialAssignment.interactive.questions?.length) {
+      return (initialAssignment.interactive.questions as QuizQuestion[]).map((q: QuizQuestion) => ({
+        question: q.question,
+        opt1: q.options[0] || '',
+        opt2: q.options[1] || '',
+        opt3: q.options[2] || '',
+        explanation: q.explanation || '',
+      }));
+    }
+    return [
+      {
+        question: 'Which sentence serves as the strongest opening for an opinion essay?',
+        opt1: 'If our school replaces 30 minutes of desk work with outdoor project time, creativity will soar.',
+        opt2: 'I think that rules are boring and people do not like them.',
+        opt3: 'School is an institution that students attend daily.',
+        explanation: 'A specific, bold thesis statement with cause and effect engages the reader immediately!',
+      },
+      {
+        question: 'What is the primary function of transition words such as "Furthermore" or "In addition"?',
+        opt1: 'To add another supporting argument or detail that strengthens your point',
+        opt2: 'To immediately conclude the entire essay',
+        opt3: 'To indicate an opposing viewpoint or objection',
+        explanation: 'Additive transition words link related arguments together smoothly.',
+      },
+    ];
+  });
 
   // Word Scramble builder state
-  const [scrambleWords, setScrambleWords] = useState<Array<{ word: string; hint: string }>>([
-    { word: 'GLIMMER', hint: 'A soft, gentle unsteady light' },
-    { word: 'WHISPER', hint: 'A soft, quiet sound or voice' },
-    { word: 'COZINESS', hint: 'Feeling warm, comfortable, and safe' },
-  ]);
+  const [scrambleWords, setScrambleWords] = useState<Array<{ word: string; hint: string }>>(() => {
+    if (initialAssignment?.interactive?.type === 'word_scramble' && initialAssignment.interactive.words?.length) {
+      return (initialAssignment.interactive.words as WordScrambleItem[]).map((w: WordScrambleItem) => ({
+        word: w.word,
+        hint: w.hint || '',
+      }));
+    }
+    return [
+      { word: 'GLIMMER', hint: 'A soft, gentle unsteady light' },
+      { word: 'WHISPER', hint: 'A soft, quiet sound or voice' },
+      { word: 'COZINESS', hint: 'Feeling warm, comfortable, and safe' },
+    ];
+  });
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -203,6 +400,13 @@ export function CreateModal({ type, busy, loaded, onClose, onSubmit }: CreateMod
     e.preventDefault();
     const fd = new FormData(e.currentTarget);
     fd.set('taskFormat', taskFormat);
+    fd.set('posted', String(posted));
+
+    if (initialAssignment) {
+      fd.set('assignmentId', initialAssignment.id);
+      if (initialAssignment.color) fd.set('color', initialAssignment.color);
+      if (initialAssignment.icon) fd.set('icon', initialAssignment.icon);
+    }
 
     if (taskFormat === 'flashcards') {
       fd.set('flashcards_data', JSON.stringify(flashcards));
@@ -245,9 +449,22 @@ export function CreateModal({ type, busy, loaded, onClose, onSubmit }: CreateMod
         </button>
 
         <span className="eyebrow">TEACHER WORKSPACE</span>
-        <h2>{type === 'assignment' ? 'Assign classroom homework' : 'Add to the toolbox'}</h2>
+        <h2>
+          {type === 'assignment'
+            ? isEditing
+              ? 'Edit classroom homework'
+              : 'Assign classroom homework'
+            : 'Add to the toolbox'}
+        </h2>
 
         <form onSubmit={handleSubmit}>
+          {isEditing && (
+            <>
+              <input type="hidden" name="assignmentId" value={initialAssignment?.id || ''} />
+              {initialAssignment?.color && <input type="hidden" name="color" value={initialAssignment.color} />}
+              {initialAssignment?.icon && <input type="hidden" name="icon" value={initialAssignment.icon} />}
+            </>
+          )}
           {type === 'assignment' && (
             <div style={{ marginBottom: '18px' }}>
               <label style={{ fontWeight: 700, color: '#275240', marginBottom: '8px', display: 'block' }}>
@@ -331,6 +548,7 @@ export function CreateModal({ type, busy, loaded, onClose, onSubmit }: CreateMod
               name="title"
               required
               maxLength={100}
+              defaultValue={initialAssignment?.title || ''}
               placeholder={
                 type === 'assignment'
                   ? taskFormat === 'essay'
@@ -354,7 +572,8 @@ export function CreateModal({ type, busy, loaded, onClose, onSubmit }: CreateMod
               required
               maxLength={40}
               defaultValue={
-                type === 'assignment'
+                initialAssignment?.type ||
+                (type === 'assignment'
                   ? taskFormat === 'essay'
                     ? 'Opinion essay'
                     : taskFormat === 'flashcards'
@@ -364,7 +583,7 @@ export function CreateModal({ type, busy, loaded, onClose, onSubmit }: CreateMod
                     : taskFormat === 'word_scramble'
                     ? 'Word Scramble Challenge'
                     : 'Connecting Words Challenge'
-                  : 'Writing guide'
+                  : 'Writing guide')
               }
             />
           </label>
@@ -374,11 +593,11 @@ export function CreateModal({ type, busy, loaded, onClose, onSubmit }: CreateMod
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                 <label>
                   Due date
-                  <input name="due" type="date" required />
+                  <input name="due" type="date" required defaultValue={initialAssignment?.due || ''} />
                 </label>
                 <label>
                   Estimated duration (minutes)
-                  <input name="minutes" type="number" defaultValue={25} min={5} max={180} />
+                  <input name="minutes" type="number" defaultValue={initialAssignment?.minutes ?? 25} min={5} max={180} />
                 </label>
               </div>
 
@@ -388,6 +607,7 @@ export function CreateModal({ type, busy, loaded, onClose, onSubmit }: CreateMod
                   name="description"
                   maxLength={180}
                   required
+                  defaultValue={initialAssignment?.description || ''}
                   placeholder={
                     taskFormat === 'essay'
                       ? 'Every place has a story. Tell us about a place that makes you feel happy.'
@@ -407,13 +627,14 @@ export function CreateModal({ type, busy, loaded, onClose, onSubmit }: CreateMod
                   required
                   maxLength={6000}
                   defaultValue={
-                    taskFormat === 'essay'
+                    initialAssignment?.instructions ||
+                    (taskFormat === 'essay'
                       ? 'Write a 150–200 word essay. State your opinion clearly in the introduction, provide two reasons with real examples, and end with a strong conclusion.'
                       : taskFormat === 'flashcards'
                       ? 'Review each flashcard, flip to see the meaning, and practice until you know every card! In the notes below, write sentences using your new words.'
                       : taskFormat === 'test'
                       ? 'Read each test question carefully and select the best answer. You will see your score and feedback when complete.'
-                      : 'Unscramble each vocabulary word using the clues provided, then practice using them in sentences.'
+                      : 'Unscramble each vocabulary word using the clues provided, then practice using them in sentences.')
                   }
                 />
               </label>
@@ -903,6 +1124,8 @@ export function CreateModal({ type, busy, loaded, onClose, onSubmit }: CreateMod
                     type="checkbox"
                     name="posted"
                     value="true"
+                    checked={posted}
+                    onChange={(e) => setPosted(e.target.checked)}
                     style={{
                       width: '18px',
                       height: '18px',
@@ -911,7 +1134,11 @@ export function CreateModal({ type, busy, loaded, onClose, onSubmit }: CreateMod
                       margin: 0,
                     }}
                   />
-                  <span>Post to classroom immediately</span>
+                  <span>
+                    {isEditing
+                      ? 'Homework is posted to classroom'
+                      : 'Post to classroom immediately'}
+                  </span>
                 </label>
                 <p
                   style={{
@@ -921,7 +1148,11 @@ export function CreateModal({ type, busy, loaded, onClose, onSubmit }: CreateMod
                     lineHeight: 1.5,
                   }}
                 >
-                  Leave unchecked to keep as an unposted draft (hidden from students until you post it).
+                  {isEditing
+                    ? posted
+                      ? 'Students (Hajun, Mark, Juwon) can see and work on this assignment. Uncheck to unpost and hide it.'
+                      : 'Students cannot see this assignment. Check to post it to the classroom now.'
+                    : 'Leave unchecked to keep as an unposted draft (hidden from students until you post it).'}
                 </p>
               </div>
             </>
@@ -936,14 +1167,178 @@ export function CreateModal({ type, busy, loaded, onClose, onSubmit }: CreateMod
                   placeholder="Add your guide, examples, or helpful notes…"
                 />
               </label>
-              <label>
-                Optional attachment
-                <input
-                  type="file"
-                  name="file"
-                  accept=".png,.jpg,.jpeg,.webp,.heic,.pdf,.doc,.docx,.txt"
-                />
-              </label>
+
+              <div style={{ marginTop: '16px', borderTop: '1px solid #e5ebe1', paddingTop: '16px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
+                  <label style={{ fontWeight: 700, color: '#275240', margin: 0 }}>
+                    Attachments & Resources (Optional)
+                  </label>
+                  <span style={{ fontSize: '11px', color: '#68776f' }}>
+                    Attach computer files, Google Drive, or both
+                  </span>
+                </div>
+
+                {/* Option 1: File from Computer */}
+                <div
+                  style={{
+                    background: '#f9faf7',
+                    border: '1px solid #e4e9df',
+                    borderRadius: '8px',
+                    padding: '12px 14px',
+                    marginBottom: '12px',
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                    <HardDrive size={15} color="#3d6b59" />
+                    <span style={{ fontWeight: 600, fontSize: '12px', color: '#273f3b' }}>
+                      File from Computer
+                    </span>
+                  </div>
+                  <input
+                    type="file"
+                    name="file"
+                    accept=".png,.jpg,.jpeg,.webp,.heic,.pdf,.doc,.docx,.txt"
+                    onChange={(e) => {
+                      const f = e.target.files?.[0];
+                      setLocalFileName(f ? f.name : '');
+                    }}
+                    style={{ fontSize: '12px', width: '100%' }}
+                  />
+                  {localFileName && (
+                    <div style={{ marginTop: '6px', fontSize: '11px', color: '#3d6b59' }}>
+                      Attached file: <strong>{localFileName}</strong>
+                    </div>
+                  )}
+                </div>
+
+                {/* Option 2: File from Google Drive */}
+                <div
+                  style={{
+                    background: '#f8fafd',
+                    border: '1px solid #bad3fc',
+                    borderRadius: '8px',
+                    padding: '12px 14px',
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <span style={{ fontSize: '15px' }}>📁</span>
+                      <span style={{ fontWeight: 600, fontSize: '12px', color: '#1a73e8' }}>
+                        Google Drive File or Document
+                      </span>
+                    </div>
+                    {driveUrl && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setDriveUrl('');
+                          setDriveName('');
+                        }}
+                        style={{
+                          background: 'none',
+                          border: 'none',
+                          color: '#70757a',
+                          fontSize: '11px',
+                          cursor: 'pointer',
+                          textDecoration: 'underline',
+                        }}
+                      >
+                        Clear
+                      </button>
+                    )}
+                  </div>
+
+                  <input
+                    type="url"
+                    name="googleDriveUrl"
+                    value={driveUrl}
+                    onChange={(e) => setDriveUrl(e.target.value)}
+                    placeholder="Paste Google Drive share link (Docs, Slides, Sheets, PDF, or folder)…"
+                    style={{
+                      width: '100%',
+                      padding: '8px 10px',
+                      fontSize: '12px',
+                      borderRadius: '6px',
+                      border: '1px solid #bad3fc',
+                      background: '#fff',
+                      marginBottom: '8px',
+                      boxSizing: 'border-box',
+                    }}
+                  />
+
+                  {driveUrl.trim() && (
+                    <>
+                      <input
+                        type="text"
+                        name="googleDriveName"
+                        value={driveName}
+                        onChange={(e) => setDriveName(e.target.value)}
+                        placeholder={`Display title (optional, defaults to "${driveInfo.label}")`}
+                        maxLength={120}
+                        style={{
+                          width: '100%',
+                          padding: '6px 10px',
+                          fontSize: '12px',
+                          borderRadius: '6px',
+                          border: '1px solid #d2e3fc',
+                          background: '#fff',
+                          marginBottom: '8px',
+                          boxSizing: 'border-box',
+                        }}
+                      />
+
+                      <div
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          padding: '6px 10px',
+                          borderRadius: '6px',
+                          background: driveInfo.isValid ? driveBadge.bg : '#fce8e6',
+                          border: `1px solid ${driveInfo.isValid ? driveBadge.borderColor : '#fad2cf'}`,
+                          fontSize: '11px',
+                          boxSizing: 'border-box',
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <span>{driveInfo.isValid ? driveBadge.icon : '⚠️'}</span>
+                          <span
+                            style={{
+                              fontWeight: 600,
+                              color: driveInfo.isValid ? driveBadge.accentColor : '#c5221f',
+                            }}
+                          >
+                            {driveInfo.isValid
+                              ? `${driveBadge.name} recognized`
+                              : 'Please check link: enter a valid Google Drive or Docs URL'}
+                          </span>
+                        </div>
+                        {driveInfo.isValid && (
+                          <a
+                            href={driveInfo.cleanUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            style={{
+                              color: driveBadge.accentColor,
+                              textDecoration: 'underline',
+                              fontWeight: 600,
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '3px',
+                            }}
+                          >
+                            Test link <ExternalLink size={11} />
+                          </a>
+                        )}
+                      </div>
+
+                      <div style={{ marginTop: '6px', fontSize: '11px', color: '#5f6368', lineHeight: 1.4 }}>
+                        💡 <em>Tip: Ensure sharing permission is set to <strong>"Anyone with the link can view"</strong> in Google Drive.</em>
+                      </div>
+                    </>
+                  )}
+                </div>
+              </div>
             </>
           )}
 
@@ -953,8 +1348,14 @@ export function CreateModal({ type, busy, loaded, onClose, onSubmit }: CreateMod
             disabled={busy || !loaded}
             style={{ marginTop: '18px', width: '100%', justifyContent: 'center' }}
           >
-            {busy ? 'Saving…' : type === 'assignment' ? 'Assign homework' : 'Save material'}{' '}
-            <Plus size={17} />
+            {busy
+              ? 'Saving…'
+              : isEditing
+              ? 'Save assignment changes'
+              : type === 'assignment'
+              ? 'Assign homework'
+              : 'Save material'}{' '}
+            {isEditing ? <Check size={17} /> : <Plus size={17} />}
           </button>
         </form>
       </section>

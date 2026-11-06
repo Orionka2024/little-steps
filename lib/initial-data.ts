@@ -279,24 +279,24 @@ A good writer revises. Small changes make a big difference!`,
 export const INITIAL_BILLING_CONFIG: BillingConfigEntry = {
   id: 'billing_global',
   kind: 'billing_config',
-  defaultRate: 800,
+  defaultRate: 900,
   currency: 'CZK',
   profiles: {
     hajun: {
       studentId: 'hajun',
-      ratePerLesson: 800,
+      ratePerLesson: 300,
       paidLessonsCount: 3,
       notes: 'Paid through Oct 26',
     },
     mark: {
       studentId: 'mark',
-      ratePerLesson: 800,
+      ratePerLesson: 300,
       paidLessonsCount: 4,
       notes: 'Paid through Nov 2',
     },
     juwon: {
       studentId: 'juwon',
-      ratePerLesson: 800,
+      ratePerLesson: 300,
       paidLessonsCount: 2,
       notes: 'Paid for Oct 12 & Oct 26',
     },

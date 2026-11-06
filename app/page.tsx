@@ -13,6 +13,7 @@ import type {
   Role,
   HomeworkStatus,
   FileAttachment,
+  GoogleDriveAttachment,
   Student,
   InteractiveActivity,
   WritingScorecard,
@@ -20,7 +21,9 @@ import type {
   FlashCardItem,
   WordScrambleItem,
   QuizQuestion,
+  DeletedAssignmentEntry,
 } from '../lib/types';
+import { parseGoogleDriveUrl } from '../lib/google-drive';
 import {
   isAssignment,
   isMaterial,
@@ -29,6 +32,7 @@ import {
   isAttendance,
   isBillingConfig,
   isDeletedAttendance,
+  isDeletedAssignment,
   STUDENTS,
   PREVIEW_STUDENT,
 } from '../lib/types';
@@ -113,6 +117,7 @@ export default function App() {
   const [active, setActive] = useState<AssignmentEntry | null>(null);
   const [resource, setResource] = useState<MaterialEntry | null>(null);
   const [modal, setModal] = useState<string>('');
+  const [editingAssignment, setEditingAssignment] = useState<AssignmentEntry | null>(null);
   const [toast, setToast] = useState<string>('');
   const [busy, setBusy] = useState<boolean>(false);
   const [loaded, setLoaded] = useState<boolean>(false);
@@ -190,10 +195,31 @@ export default function App() {
 
         setRows((prev) => {
           const serverMap = new Map(formattedServer.map((item) => [item.id, item]));
+          const allTombstones = [
+            ...formattedServer.filter(isDeletedAttendance),
+            ...prev.filter(isDeletedAttendance),
+          ];
+          const allDeletedIds = new Set(allTombstones.map((t) => t.targetId));
+          const allDeletedDates = new Set(
+            allTombstones
+              .map((t) => (t as unknown as { date?: string }).date)
+              .filter((d): d is string => Boolean(d))
+          );
+
           const merged = [...formattedServer];
           const unsavedToSync: Entry[] = [];
 
           for (const localItem of prev) {
+            // Guard: Never resurrect attendance records that were deleted
+            if (isAttendance(localItem)) {
+              if (
+                allDeletedIds.has(localItem.id) ||
+                (localItem.date && allDeletedDates.has(localItem.date))
+              ) {
+                continue;
+              }
+            }
+
             if (!serverMap.has(localItem.id)) {
               merged.push(localItem);
               unsavedToSync.push(localItem);
@@ -202,15 +228,21 @@ export default function App() {
 
           persistRows(merged);
 
-          if (unsavedToSync.length > 0 && currentUser.role === 'Teacher') {
-            fetch('/api/data', {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                'x-user-role': currentUser.role,
-              },
-              body: JSON.stringify(unsavedToSync),
-            }).catch(() => {});
+          if (unsavedToSync.length > 0) {
+            const syncable = unsavedToSync.filter((entry) => {
+              if (currentUser.role === 'Teacher') return true;
+              return entry.kind === 'submission' || entry.kind === 'message';
+            });
+            if (syncable.length > 0) {
+              fetch('/api/data', {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'x-user-role': currentUser.role,
+                },
+                body: JSON.stringify(syncable),
+              }).catch(() => {});
+            }
           }
 
           return merged;
@@ -243,25 +275,28 @@ export default function App() {
 
   // Derived datasets
   const allAssignments = useMemo<AssignmentEntry[]>(() => {
-    const custom = rows.filter(isAssignment);
-    return [
-      ...INITIAL_ASSIGNMENTS.map((init) => {
+    const deletedIds = new Set(
+      rows.filter(isDeletedAssignment).map((d) => d.targetId)
+    );
+    const custom = rows.filter(isAssignment).filter((a) => !deletedIds.has(a.id));
+    const initialMapped = INITIAL_ASSIGNMENTS
+      .filter((init) => !deletedIds.has(init.id))
+      .map((init) => {
         const overridden = custom.find((c) => c.id === init.id);
         return overridden || init;
-      }),
-      ...custom.filter((c) => !INITIAL_ASSIGNMENTS.some((init) => init.id === c.id)),
-    ];
+      });
+    const newCustom = custom.filter((c) => !INITIAL_ASSIGNMENTS.some((init) => init.id === c.id));
+    return [...newCustom, ...initialMapped];
   }, [rows]);
 
   const allMaterials = useMemo<MaterialEntry[]>(() => {
     const custom = rows.filter(isMaterial);
-    return [
-      ...INITIAL_MATERIALS.map((init) => {
-        const overridden = custom.find((c) => c.id === init.id);
-        return overridden || init;
-      }),
-      ...custom.filter((c) => !INITIAL_MATERIALS.some((init) => init.id === c.id)),
-    ];
+    const initialMapped = INITIAL_MATERIALS.map((init) => {
+      const overridden = custom.find((c) => c.id === init.id);
+      return overridden || init;
+    });
+    const newCustom = custom.filter((c) => !INITIAL_MATERIALS.some((init) => init.id === c.id));
+    return [...newCustom, ...initialMapped];
   }, [rows]);
 
   const visibleAssignments = useMemo<AssignmentEntry[]>(() => {
@@ -274,12 +309,18 @@ export default function App() {
   }, [rows]);
 
   const allAttendance = useMemo<AttendanceEntry[]>(() => {
-    const deletedIds = new Set(
-      rows
-        .filter((r): r is DeletedAttendanceEntry => isDeletedAttendance(r))
-        .map((r) => r.targetId)
+    const tombstones = rows.filter((r): r is DeletedAttendanceEntry => isDeletedAttendance(r));
+    const deletedIds = new Set(tombstones.map((r) => r.targetId));
+    const deletedDates = new Set(
+      tombstones
+        .map((r) => (r as unknown as { date?: string }).date)
+        .filter((d): d is string => Boolean(d))
     );
-    const custom = rows.filter(isAttendance).filter((c) => !deletedIds.has(c.id));
+
+    const isRecordDeleted = (id: string, date?: string) =>
+      deletedIds.has(id) || (Boolean(date) && deletedDates.has(date!));
+
+    const custom = rows.filter(isAttendance).filter((c) => !isRecordDeleted(c.id, c.date));
     const result: AttendanceEntry[] = [];
     const seenDates = new Set<string>();
 
@@ -291,7 +332,11 @@ export default function App() {
 
     // Add initial remaining attendance dates that haven't been deleted or replaced
     for (const init of INITIAL_ATTENDANCE) {
-      if (!deletedIds.has(init.id) && !seenDates.has(init.date) && !custom.some((c) => c.id === init.id)) {
+      if (
+        !isRecordDeleted(init.id, init.date) &&
+        !seenDates.has(init.date) &&
+        !custom.some((c) => c.id === init.id)
+      ) {
         result.push(init);
         seenDates.add(init.date);
       }
@@ -363,7 +408,7 @@ export default function App() {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'x-user-role': role,
+        'x-user-role': currentUser?.role || role,
       },
       body: JSON.stringify(entry),
     });
@@ -387,7 +432,7 @@ export default function App() {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'x-user-role': role,
+        'x-user-role': currentUser?.role || role,
       },
       body: JSON.stringify(entries),
     });
@@ -443,6 +488,59 @@ export default function App() {
     });
   }
 
+  function handleOpenEditAssignment(assignment: AssignmentEntry) {
+    if (role !== 'Teacher') return;
+    setEditingAssignment(assignment);
+    setModal('assignment');
+  }
+
+  function handleDeleteAssignment(assignment: AssignmentEntry) {
+    if (role !== 'Teacher') return;
+    const confirmed = window.confirm(
+      `Are you sure you want to delete assignment "${assignment.title}"? This cannot be undone.`
+    );
+    if (!confirmed) return;
+
+    action(async () => {
+      const res = await fetch(`/api/data?id=${encodeURIComponent(assignment.id)}`, {
+        method: 'DELETE',
+        headers: {
+          'x-user-role': currentUser?.role || role,
+        },
+      });
+
+      if (!res.ok) {
+        const errJson = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(errJson.error || 'Failed to delete assignment.');
+      }
+
+      const tombstone: DeletedAssignmentEntry = {
+        id: `del_asgn_${assignment.id}`,
+        kind: 'deleted_assignment',
+        targetId: assignment.id,
+      };
+
+      setRows((prev) => {
+        const next = [
+          ...prev.filter(
+            (r) =>
+              r.id !== assignment.id &&
+              r.id !== tombstone.id &&
+              !(isSubmission(r) && r.assignment === assignment.id)
+          ),
+          tombstone,
+        ];
+        persistRows(next);
+        return next;
+      });
+
+      if (active && active.id === assignment.id) {
+        setActive(null);
+      }
+      setToast(`Assignment "${assignment.title}" has been deleted.`);
+    });
+  }
+
   // Teacher switches which student they are reviewing in Editor
   function handleReviewingStudentChange(student: Student) {
     if (!active) return;
@@ -487,6 +585,7 @@ export default function App() {
 
   const handleRoleChange = (newRole: Role) => {
     setRole(newRole);
+    setFilter('All homework');
     if (newRole === 'Student' && (page === 'Attendance' || page === 'Roadmap')) {
       setPage('Home');
     }
@@ -578,8 +677,8 @@ export default function App() {
   }
 
   const handleResetSubmission = () => {
-    if (!active) return;
-    const targetStudent = role === 'Teacher' ? reviewingStudent : activeStudent;
+    if (!active || role !== 'Teacher') return;
+    const targetStudent = reviewingStudent;
     const submissionId = `s-${active.id}-${targetStudent.id}`;
 
     action(async () => {
@@ -663,6 +762,19 @@ export default function App() {
 
   const handleSaveAttendance = async (entry: AttendanceEntry) => {
     await action(async () => {
+      // Clear any prior deletion tombstones for this entry id or date
+      setRows((prev) => {
+        const next = prev.filter(
+          (x) =>
+            !(
+              isDeletedAttendance(x) &&
+              (x.targetId === entry.id ||
+                (entry.date && (x as unknown as { date?: string }).date === entry.date))
+            )
+        );
+        persistRows(next);
+        return next;
+      });
       await saveEntry(entry);
       setToast(`Attendance saved for ${entry.date || entry.topic || 'lesson'}.`);
     });
@@ -670,6 +782,21 @@ export default function App() {
 
   const handleSaveAttendanceBatch = async (entries: AttendanceEntry[], label?: string) => {
     await action(async () => {
+      const entryIds = new Set(entries.map((e) => e.id));
+      const entryDates = new Set(entries.map((e) => e.date).filter(Boolean));
+      setRows((prev) => {
+        const next = prev.filter(
+          (x) =>
+            !(
+              isDeletedAttendance(x) &&
+              (entryIds.has(x.targetId) ||
+                (Boolean((x as unknown as { date?: string }).date) &&
+                  entryDates.has((x as unknown as { date?: string }).date!)))
+            )
+        );
+        persistRows(next);
+        return next;
+      });
       await saveEntries(entries);
       const studentName = label && label !== 'all'
         ? STUDENTS.find((s) => s.id === label)?.name || label
@@ -677,7 +804,10 @@ export default function App() {
       if (studentName) {
         setToast(`Marked ${entries.length} lesson${entries.length > 1 ? 's' : ''} as paid for ${studentName}.`);
       } else {
-        const totalAmount = entries.length * (billingConfig.defaultRate || 800);
+        const totalAmount = entries.reduce(
+          (sum, e) => sum + (e.ratePerLesson || billingConfig.defaultRate || 900),
+          0
+        );
         setToast(`Marked ${entries.length} lesson${entries.length > 1 ? 's' : ''} as paid (${totalAmount.toLocaleString()} CZK).`);
       }
     });
@@ -686,26 +816,42 @@ export default function App() {
   const handleDeleteAttendance = async (id: string) => {
     await action(async () => {
       const targetSession = allAttendance.find((a) => a.id === id);
+      const targetDate = targetSession?.date;
       const matchingInit = targetSession
-        ? INITIAL_ATTENDANCE.find((init) => init.id === id || init.date === targetSession.date)
+        ? INITIAL_ATTENDANCE.find((init) => init.id === id || init.date === targetDate)
         : INITIAL_ATTENDANCE.find((init) => init.id === id);
 
-      const targetIds = Array.from(new Set([id, matchingInit?.id].filter(Boolean))) as string[];
+      const matchingRows = rows.filter(
+        (r) => isAttendance(r) && (r.id === id || (targetDate && r.date === targetDate))
+      );
+
+      const targetIds = Array.from(
+        new Set([id, matchingInit?.id, ...matchingRows.map((r) => r.id)].filter(Boolean))
+      ) as string[];
+
+      const tombstones: DeletedAttendanceEntry[] = [];
 
       for (const targetId of targetIds) {
         try {
-          await fetch(`/api/data?id=${encodeURIComponent(targetId)}`, {
+          const deleteUrl = targetDate
+            ? `/api/data?id=${encodeURIComponent(targetId)}&date=${encodeURIComponent(targetDate)}`
+            : `/api/data?id=${encodeURIComponent(targetId)}`;
+          await fetch(deleteUrl, {
             method: 'DELETE',
             headers: { 'x-user-role': role },
           });
         } catch {}
 
-        const tombstone: DeletedAttendanceEntry = {
+        tombstones.push({
           id: `del_${targetId}`,
           kind: 'deleted_attendance',
-          targetId: targetId,
-        };
-        await saveEntry(tombstone);
+          targetId,
+          ...(targetDate ? { date: targetDate } : {}),
+        });
+      }
+
+      if (tombstones.length > 0) {
+        await saveEntries(tombstones);
       }
 
       setRows((prev) => {
@@ -713,13 +859,10 @@ export default function App() {
           ...prev.filter(
             (x) =>
               !targetIds.includes(x.id) &&
+              (!isAttendance(x) || !targetDate || x.date !== targetDate) &&
               (!isDeletedAttendance(x) || !targetIds.includes(x.targetId))
           ),
-          ...targetIds.map((targetId) => ({
-            id: `del_${targetId}`,
-            kind: 'deleted_attendance' as const,
-            targetId,
-          })),
+          ...tombstones,
         ];
         persistRows(next);
         return next;
@@ -914,14 +1057,21 @@ export default function App() {
           };
         }
 
-        const newAssignment: AssignmentEntry = {
-          id: crypto.randomUUID(),
+        const existingId = String(fd.get('assignmentId') || editingAssignment?.id || '').trim();
+        const isEditing = Boolean(existingId);
+        const targetId = existingId || crypto.randomUUID();
+
+        const existingColor = String(fd.get('color') || editingAssignment?.color || color);
+        const existingIcon = String(fd.get('icon') || editingAssignment?.icon || icon);
+
+        const assignmentToSave: AssignmentEntry = {
+          id: targetId,
           kind: 'assignment',
           taskType: taskFormat,
           title,
           type: type.trim() || defaultType,
-          color,
-          icon,
+          color: existingColor,
+          icon: existingIcon,
           due: String(fd.get('due') || ''),
           description: String(fd.get('description') || ''),
           instructions: String(fd.get('instructions') || ''),
@@ -929,10 +1079,16 @@ export default function App() {
           posted,
           interactive,
         };
-        await saveEntry(newAssignment);
+        await saveEntry(assignmentToSave);
+        if (active && active.id === targetId) {
+          setActive(assignmentToSave);
+        }
         setModal('');
+        setEditingAssignment(null);
         setToast(
-          posted
+          isEditing
+            ? `Homework "${title}" updated successfully.`
+            : posted
             ? `Homework "${title}" assigned and posted to the classroom.`
             : `Homework "${title}" saved as unposted draft. Students cannot see it yet.`
         );
@@ -951,6 +1107,29 @@ export default function App() {
           uploadedFile = (await uploadRes.json()) as FileAttachment;
         }
 
+        let googleDriveAttachment: GoogleDriveAttachment | undefined;
+        const rawDriveUrl = String(fd.get('googleDriveUrl') || '').trim();
+        const rawDriveName = String(fd.get('googleDriveName') || '').trim();
+
+        if (rawDriveUrl) {
+          const driveInfo = parseGoogleDriveUrl(rawDriveUrl);
+          if (driveInfo.isValid) {
+            googleDriveAttachment = {
+              url: driveInfo.cleanUrl,
+              name: rawDriveName || driveInfo.label,
+              fileId: driveInfo.fileId,
+              driveType: driveInfo.driveType,
+              embedUrl: driveInfo.embedUrl,
+            };
+          } else {
+            googleDriveAttachment = {
+              url: rawDriveUrl,
+              name: rawDriveName || 'Google Drive Attachment',
+              driveType: 'file',
+            };
+          }
+        }
+
         const newMaterial: MaterialEntry = {
           id: crypto.randomUUID(),
           kind: 'material',
@@ -960,6 +1139,7 @@ export default function App() {
           icon: '📖',
           body: String(fd.get('body') || ''),
           file: uploadedFile,
+          googleDrive: googleDriveAttachment,
           interactive,
         };
         await saveEntry(newMaterial);
@@ -1044,6 +1224,8 @@ export default function App() {
               }}
               onNavigate={navigateTo}
               onTogglePost={handleTogglePost}
+              onEditAssignment={handleOpenEditAssignment}
+              onDeleteAssignment={handleDeleteAssignment}
             />
           )}
 
@@ -1056,8 +1238,13 @@ export default function App() {
               getStatus={getHomeworkStatus}
               getStudentSubmissions={getStudentSubmissions}
               onOpenAssignment={openAssignment}
-              onOpenCreateModal={() => setModal('assignment')}
+              onOpenCreateModal={() => {
+                setEditingAssignment(null);
+                setModal('assignment');
+              }}
               onTogglePost={handleTogglePost}
+              onEditAssignment={handleOpenEditAssignment}
+              onDeleteAssignment={handleDeleteAssignment}
             />
           )}
 
@@ -1193,6 +1380,8 @@ export default function App() {
                 setResource(INITIAL_MATERIALS[0]);
                 setModal('resource');
               }}
+              onEditAssignment={handleOpenEditAssignment}
+              onDeleteAssignment={handleDeleteAssignment}
             />
           )}
 
@@ -1214,9 +1403,13 @@ export default function App() {
       {(modal === 'assignment' || modal === 'material') && (
         <CreateModal
           type={modal}
+          initialAssignment={modal === 'assignment' ? editingAssignment : null}
           busy={busy}
           loaded={loaded}
-          onClose={() => setModal('')}
+          onClose={() => {
+            setModal('');
+            setEditingAssignment(null);
+          }}
           onSubmit={handleCreateModalSubmit}
         />
       )}

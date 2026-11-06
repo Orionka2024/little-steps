@@ -15,6 +15,8 @@ interface HomeworkViewProps {
   onOpenAssignment: (assignment: AssignmentEntry) => void;
   onOpenCreateModal: () => void;
   onTogglePost?: (assignment: AssignmentEntry, e: React.MouseEvent) => void;
+  onEditAssignment?: (assignment: AssignmentEntry, e: React.MouseEvent) => void;
+  onDeleteAssignment?: (assignment: AssignmentEntry, e: React.MouseEvent) => void;
 }
 
 const TEACHER_FILTERS = [
@@ -39,21 +41,26 @@ export function HomeworkView({
   onOpenAssignment,
   onOpenCreateModal,
   onTogglePost,
+  onEditAssignment,
+  onDeleteAssignment,
 }: HomeworkViewProps) {
   const filterOptions = role === 'Teacher' ? TEACHER_FILTERS : STUDENT_FILTERS;
+  const activeFilter = (filterOptions as readonly string[]).includes(filter)
+    ? filter
+    : 'All homework';
 
   const filteredAssignments = assignments
     .filter((a) => (role === 'Teacher' ? true : a.posted === true))
     .filter((a) => {
-      if (filter === 'All homework') return true;
-      if (filter === 'Unposted (Drafts)') return !a.posted;
-      if (filter === 'Posted') return !!a.posted;
+      if (activeFilter === 'All homework') return true;
+      if (activeFilter === 'Unposted (Drafts)') return !a.posted;
+      if (activeFilter === 'Posted') return !!a.posted;
       if (role === 'Teacher') {
         const subs = getStudentSubmissions(a);
         const statuses = Object.values(subs);
-        return statuses.includes(filter as HomeworkStatus);
+        return statuses.includes(activeFilter as HomeworkStatus);
       }
-      return getStatus(a) === filter;
+      return getStatus(a) === activeFilter;
     });
 
   return (
@@ -80,7 +87,7 @@ export function HomeworkView({
           {filterOptions.map((f) => (
             <button
               key={f}
-              className={filter === f ? 'active' : ''}
+              className={activeFilter === f ? 'active' : ''}
               onClick={() => onFilterChange(f)}
             >
               {f}
@@ -99,6 +106,8 @@ export function HomeworkView({
             studentSubmissions={getStudentSubmissions(a)}
             onOpen={onOpenAssignment}
             onTogglePost={onTogglePost}
+            onEdit={onEditAssignment}
+            onDelete={onDeleteAssignment}
           />
         ))}
       </div>

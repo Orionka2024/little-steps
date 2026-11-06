@@ -88,6 +88,14 @@ export const AssignmentPayloadSchema = z.object({
   posted: z.boolean().optional().default(false),
 });
 
+export const GoogleDriveAttachmentSchema = z.object({
+  url: z.string().min(1).max(2000),
+  name: z.string().max(200).optional(),
+  fileId: z.string().optional(),
+  driveType: z.enum(['document', 'presentation', 'spreadsheet', 'folder', 'file']).optional(),
+  embedUrl: z.string().max(2000).optional(),
+});
+
 export const MaterialPayloadSchema = z.object({
   id: z.string().min(1),
   kind: z.literal('material'),
@@ -97,6 +105,7 @@ export const MaterialPayloadSchema = z.object({
   icon: z.string().optional(),
   body: z.string().min(1).max(15000),
   file: FileAttachmentSchema.optional(),
+  googleDrive: GoogleDriveAttachmentSchema.optional(),
   interactive: InteractiveActivitySchema.optional(),
   localId: z.string().optional(),
 });
@@ -157,7 +166,7 @@ export const AttendancePayloadSchema = z.object({
   topic: z.string().max(200).optional().default('Lesson'),
   durationMinutes: z.number().int().positive().optional().default(60),
   records: z.array(StudentAttendanceRecordSchema),
-  ratePerLesson: z.number().positive().optional().default(800),
+  ratePerLesson: z.number().positive().optional().default(900),
   paid: z.boolean().optional().default(false),
   notes: z.string().max(1000).optional(),
   localId: z.string().optional(),
@@ -173,7 +182,7 @@ export const StudentBillingProfileSchema = z.object({
 export const BillingConfigPayloadSchema = z.object({
   id: z.string().min(1),
   kind: z.literal('billing_config'),
-  defaultRate: z.number().positive().default(800),
+  defaultRate: z.number().positive().default(900),
   currency: z.string().min(1).max(10).default('CZK'),
   profiles: z.record(StudentBillingProfileSchema).default({}),
   localId: z.string().optional(),
@@ -182,6 +191,14 @@ export const BillingConfigPayloadSchema = z.object({
 export const DeletedAttendancePayloadSchema = z.object({
   id: z.string().min(1),
   kind: z.literal('deleted_attendance'),
+  targetId: z.string().min(1),
+  date: z.string().optional(),
+  localId: z.string().optional(),
+});
+
+export const DeletedAssignmentPayloadSchema = z.object({
+  id: z.string().min(1),
+  kind: z.literal('deleted_assignment'),
   targetId: z.string().min(1),
   localId: z.string().optional(),
 });
@@ -194,6 +211,7 @@ export const EntryPayloadSchema = z.discriminatedUnion('kind', [
   AttendancePayloadSchema,
   BillingConfigPayloadSchema,
   DeletedAttendancePayloadSchema,
+  DeletedAssignmentPayloadSchema,
 ]);
 
 export type ValidatedEntry = z.infer<typeof EntryPayloadSchema>;
