@@ -158,50 +158,6 @@ export const INITIAL_ASSIGNMENTS: AssignmentEntry[] = [
       ],
     },
   },
-  {
-    id: 'a4',
-    kind: 'assignment',
-    title: 'Would you rather...',
-    type: 'Opinion essay',
-    due: '2026-11-12',
-    minutes: 25,
-    words: 150,
-    description:
-      'The ultimate choice challenge! Pick your side, explain why, and persuade your reader with convincing reasons.',
-    instructions:
-      'Choose one exciting "Would You Rather" question (or invent your own):\n\n• Would you rather have the ability to fly or be invisible?\n• Would you rather live in a treehouse village or an underwater dome?\n• Would you rather be able to talk to animals or speak every human language?\n\n1. State your choice clearly in the opening sentence.\n2. Give two strong reasons with vivid examples explaining why it is better.\n3. Address one disadvantage of the other choice.\n4. Conclude with a memorable closing sentence.',
-    color: 'peach',
-    icon: '🤔',
-    posted: true,
-    interactive: {
-      type: 'quiz',
-      title: 'Warm-up: Persuasive Arguments Quiz',
-      questions: [
-        {
-          question: 'What makes a "Would You Rather" essay most persuasive?',
-          options: [
-            'Giving clear reasons and vivid real-life examples',
-            'Repeating your choice over and over without reasons',
-            'Writing only one short sentence',
-          ],
-          correctIndex: 0,
-          explanation:
-            'Strong reasons and vivid examples help your reader see the world from your perspective!',
-        },
-        {
-          question: 'Which transition phrase is best to compare your choice with the alternative?',
-          options: [
-            'On the other hand',
-            'In conclusion',
-            'Suddenly',
-          ],
-          correctIndex: 0,
-          explanation:
-            '"On the other hand" is a great transitional phrase to contrast two opposing choices!',
-        },
-      ],
-    },
-  },
 ];
 
 export const INITIAL_MATERIALS: MaterialEntry[] = [
