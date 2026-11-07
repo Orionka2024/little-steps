@@ -87,7 +87,7 @@ function getInitialClassroomRows(): Entry[] {
         return (parsed as Entry[]).map((entry) => {
           if (
             entry.kind === 'assignment' &&
-            ['a0', 'a1', 'a2', 'a3'].includes(entry.id) &&
+            ['a0', 'a1', 'a2', 'a3', 'a4'].includes(entry.id) &&
             (entry as AssignmentEntry).posted === false
           ) {
             return { ...entry, posted: true };
