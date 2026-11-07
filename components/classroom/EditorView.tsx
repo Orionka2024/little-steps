@@ -12,6 +12,7 @@ import {
   Trash2,
   PenTool,
   Pencil,
+  Download,
 } from 'lucide-react';
 import type {
   AssignmentEntry,
@@ -111,6 +112,36 @@ export function EditorView({
     month: 'long',
     day: 'numeric',
   });
+
+  const handleDownloadEssay = () => {
+    if (!draft.trim()) return;
+    const authorName = role === 'Teacher' ? reviewingStudent.name : currentStudent.name;
+    const cleanTitle = assignment.title.replace(/[^a-zA-Z0-9_-]/g, '_');
+    const filename = `${authorName}_${cleanTitle}_Essay.txt`;
+    const content = `Student: ${authorName}
+Assignment: ${assignment.title}
+Due Date: ${assignment.due}
+Status: ${submission?.status || 'Draft'}
+Words: ${wordCount}
+Saved Date: ${new Date().toLocaleString()}
+
+--------------------
+ESSAY CONTENT:
+--------------------
+
+${draft}
+`;
+
+    const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
 
   return (
     <>
@@ -410,7 +441,32 @@ export function EditorView({
                 )}
               </div>
 
-              <span>{wordCount} words</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                {draft.trim().length > 0 && (
+                  <button
+                    type="button"
+                    onClick={handleDownloadEssay}
+                    title="Export / download a copy of this essay to keep on your computer"
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                      padding: '3px 8px',
+                      borderRadius: '5px',
+                      fontSize: '11px',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      border: '1px solid #d2ded0',
+                      background: '#ffffff',
+                      color: '#285844',
+                    }}
+                  >
+                    <Download size={12} />
+                    Download essay
+                  </button>
+                )}
+                <span>{wordCount} words</span>
+              </div>
             </div>
 
             {role === 'Teacher' && markupMode ? (

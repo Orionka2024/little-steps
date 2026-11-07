@@ -54,6 +54,33 @@ function getRecordsBackupFilePath(): string {
   return path.join(dir, 'classroom_records_backup.json');
 }
 
+function getSubmissionsArchiveFilePath(): string {
+  const dir = getStorageDir();
+  return path.join(dir, 'classroom_submissions_archive.json');
+}
+
+function archiveSubmissionRecord(record: StoredRecord): void {
+  try {
+    const archivePath = getSubmissionsArchiveFilePath();
+    let archive: StoredRecord[] = [];
+    if (existsSync(archivePath)) {
+      try {
+        const raw = readFileSync(archivePath, 'utf-8');
+        archive = JSON.parse(raw);
+      } catch {}
+    }
+    const idx = archive.findIndex((r) => r.id === record.id);
+    if (idx >= 0) {
+      archive[idx] = record;
+    } else {
+      archive.push(record);
+    }
+    writeFileSync(archivePath, JSON.stringify(archive, null, 2), 'utf-8');
+  } catch {
+    // Ignore in read-only environments
+  }
+}
+
 function getFilesFilePath(): string {
   const dir = getStorageDir();
   return path.join(dir, 'classroom_files.json');
@@ -137,6 +164,25 @@ function loadRecordsFromDisk(): StoredRecord[] {
           updated = true;
         }
       }
+
+      // Restore any durable submissions from the archive file
+      try {
+        const archivePath = getSubmissionsArchiveFilePath();
+        if (existsSync(archivePath)) {
+          const rawArchive = readFileSync(archivePath, 'utf-8');
+          const archivedSubmissions = JSON.parse(rawArchive) as StoredRecord[];
+          const existingIds = new Set(cachedRecords.map((r) => r.id));
+          for (const arch of archivedSubmissions) {
+            if (!existingIds.has(arch.id)) {
+              cachedRecords.push(arch);
+              updated = true;
+            }
+          }
+        }
+      } catch {
+        // Ignore archive read errors
+      }
+
       if (updated) {
         try {
           writeFileSync(filePath, JSON.stringify(cachedRecords, null, 2), 'utf-8');
@@ -167,6 +213,21 @@ function loadRecordsFromDisk(): StoredRecord[] {
     },
     ...initialAssignmentRecords,
   ];
+
+  // Also restore any historical submissions from archive even on clean/cold startup
+  try {
+    const archivePath = getSubmissionsArchiveFilePath();
+    if (existsSync(archivePath)) {
+      const rawArchive = readFileSync(archivePath, 'utf-8');
+      const archivedSubmissions = JSON.parse(rawArchive) as StoredRecord[];
+      const existingIds = new Set(cachedRecords.map((r) => r.id));
+      for (const arch of archivedSubmissions) {
+        if (!existingIds.has(arch.id)) {
+          cachedRecords.push(arch);
+        }
+      }
+    }
+  } catch {}
 
   try {
     writeFileSync(filePath, JSON.stringify(cachedRecords, null, 2), 'utf-8');
@@ -275,6 +336,16 @@ export async function upsertStoredRecord(
     });
   }
 
+  // Immutable append-only backup for student essays
+  if (kind === 'submission') {
+    archiveSubmissionRecord({
+      id: key,
+      owner,
+      kind,
+      payload: payloadToStore,
+    });
+  }
+
   saveRecordsToDisk(records);
 }
 
@@ -300,6 +371,15 @@ export async function upsertStoredRecords(
       };
     } else {
       records.push({
+        id: key,
+        owner: item.owner,
+        kind: item.kind,
+        payload: payloadToStore,
+      });
+    }
+
+    if (item.kind === 'submission') {
+      archiveSubmissionRecord({
         id: key,
         owner: item.owner,
         kind: item.kind,

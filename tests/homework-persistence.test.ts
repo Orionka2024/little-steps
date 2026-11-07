@@ -499,4 +499,36 @@ test('Storage records seed provides assignments with posted: true for classroom'
   assert.strictEqual(studentAssignments.length, storedAssignments.length, 'All stored assignments must be visible to students');
 });
 
+test('Student essay submission is safely archived and retrievable across storage loads', async () => {
+  const essay = {
+    id: 's-a4-mark-safe',
+    kind: 'submission',
+    assignment: 'a4',
+    studentId: 'mark',
+    studentName: 'Mark',
+    text: 'If I had to choose, I would rather speak every human language because understanding people from different cultures opens up the whole world.',
+    files: [],
+    status: 'Handed in',
+    updated: new Date().toISOString(),
+  };
+
+  await upsertStoredRecord(
+    essay.id,
+    'local_seedy',
+    essay.kind,
+    essay as unknown as Record<string, unknown>
+  );
+
+  const stored = await getStoredRecords('local_seedy');
+  const found = stored.find((r) => r.id === `local_seedy:${essay.id}` || r.id === essay.id);
+  assert.ok(found, 'Essay submission must exist in stored records');
+  assert.strictEqual(
+    (found as any).text,
+    'If I had to choose, I would rather speak every human language because understanding people from different cultures opens up the whole world.'
+  );
+
+  // Clean up
+  await deleteStoredRecord(essay.id, 'local_seedy');
+});
+
 

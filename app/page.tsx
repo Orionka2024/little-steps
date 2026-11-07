@@ -113,6 +113,38 @@ function persistRows(rowsToSave: Entry[], trigger?: string): void {
   saveCurriculumBackup(rowsToSave, trigger || 'persist_rows').catch(() => {});
 }
 
+function queueEntryForBackgroundSync(entry: Entry): void {
+  if (typeof window === 'undefined') return;
+  try {
+    const raw = localStorage.getItem('classroom_pending_sync_queue');
+    const list: Entry[] = raw ? JSON.parse(raw) : [];
+    const filtered = list.filter((e) => e.id !== entry.id);
+    filtered.push(entry);
+    localStorage.setItem('classroom_pending_sync_queue', JSON.stringify(filtered));
+  } catch {}
+}
+
+function removeEntryFromBackgroundSyncQueue(id: string): void {
+  if (typeof window === 'undefined') return;
+  try {
+    const raw = localStorage.getItem('classroom_pending_sync_queue');
+    if (!raw) return;
+    const list: Entry[] = JSON.parse(raw);
+    const filtered = list.filter((e) => e.id !== id);
+    localStorage.setItem('classroom_pending_sync_queue', JSON.stringify(filtered));
+  } catch {}
+}
+
+function getPendingSyncQueue(): Entry[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = localStorage.getItem('classroom_pending_sync_queue');
+    return raw ? (JSON.parse(raw) as Entry[]) : [];
+  } catch {
+    return [];
+  }
+}
+
 export default function App() {
   const [currentUser, setCurrentUser] = useState<ClassroomUser | null>(getInitialUserSession);
   const [checkingAuth, setCheckingAuth] = useState<boolean>(() => !getInitialUserSession());
@@ -301,6 +333,27 @@ export default function App() {
     if (!currentUser) return;
 
     const pullLatestData = () => {
+      // Flush any queued offline entries (e.g. submissions handed in while offline)
+      const pendingQueue = getPendingSyncQueue();
+      if (pendingQueue.length > 0) {
+        fetch('/api/data', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-user-role': currentUser?.role || role,
+          },
+          body: JSON.stringify(pendingQueue),
+        })
+          .then((res) => {
+            if (res.ok) {
+              for (const item of pendingQueue) {
+                removeEntryFromBackgroundSyncQueue(item.id);
+              }
+            }
+          })
+          .catch(() => {});
+      }
+
       // Don't interrupt if the user is actively typing an unsaved draft
       if (dirty) return;
 
@@ -511,50 +564,84 @@ export default function App() {
   }
 
   async function saveEntry(entry: Entry) {
-    const res = await fetch('/api/data', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-user-role': currentUser?.role || role,
-      },
-      body: JSON.stringify(entry),
-    });
-
-    if (!res.ok) {
-      const errorJson = (await res.json()) as { error?: string };
-      throw new Error(errorJson.error || 'Could not save. Please try again.');
-    }
-
+    // 1. Local-first optimistic durability: ALWAYS save to React state & durable storage immediately
     setRows((prev) => {
       const next = [...prev.filter((x) => x.id !== entry.id), entry];
-      persistRows(next);
+      persistRows(next, `save_${entry.kind}`);
       return next;
     });
+
+    // Dedicated local vault for student essay submissions
+    if (entry.kind === 'submission') {
+      try {
+        localStorage.setItem(`saved_sub_${entry.assignment}_${entry.studentId}`, JSON.stringify(entry));
+        localStorage.removeItem(`active_draft_${entry.assignment}_${entry.studentId}`);
+      } catch {}
+    }
+
+    // 2. Dispatch to server in background
+    try {
+      const res = await fetch('/api/data', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-user-role': currentUser?.role || role,
+        },
+        body: JSON.stringify(entry),
+      });
+
+      if (!res.ok) {
+        queueEntryForBackgroundSync(entry);
+        return;
+      }
+
+      removeEntryFromBackgroundSyncQueue(entry.id);
+    } catch {
+      // Offline or network glitch: queued for background auto-retry
+      queueEntryForBackgroundSync(entry);
+    }
   }
 
   async function saveEntries(entries: Entry[]) {
     if (entries.length === 0) return;
 
-    const res = await fetch('/api/data', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-user-role': currentUser?.role || role,
-      },
-      body: JSON.stringify(entries),
-    });
-
-    if (!res.ok) {
-      const errorJson = (await res.json()) as { error?: string };
-      throw new Error(errorJson.error || 'Could not save. Please try again.');
-    }
-
+    // 1. Local-first optimistic durability
     setRows((prev) => {
       const ids = new Set(entries.map((e) => e.id));
       const next = [...prev.filter((x) => !ids.has(x.id)), ...entries];
-      persistRows(next);
+      persistRows(next, 'save_batch');
       return next;
     });
+
+    for (const entry of entries) {
+      if (entry.kind === 'submission') {
+        try {
+          localStorage.setItem(`saved_sub_${entry.assignment}_${entry.studentId}`, JSON.stringify(entry));
+          localStorage.removeItem(`active_draft_${entry.assignment}_${entry.studentId}`);
+        } catch {}
+      }
+    }
+
+    // 2. Dispatch to server in background
+    try {
+      const res = await fetch('/api/data', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-user-role': currentUser?.role || role,
+        },
+        body: JSON.stringify(entries),
+      });
+
+      if (!res.ok) {
+        for (const e of entries) queueEntryForBackgroundSync(e);
+        return;
+      }
+
+      for (const e of entries) removeEntryFromBackgroundSyncQueue(e.id);
+    } catch {
+      for (const e of entries) queueEntryForBackgroundSync(e);
+    }
   }
 
   function openAssignment(assignment: AssignmentEntry) {
@@ -565,12 +652,35 @@ export default function App() {
     setActive(assignment);
     const targetStudent = role === 'Teacher' ? reviewingStudent : activeStudent;
     const existingSubmission = getSubmission(assignment.id, targetStudent.id);
-    setDraft(existingSubmission?.text || '');
-    setFiles(existingSubmission?.files || []);
-    setFeedback(existingSubmission?.feedback || '');
-    setScorecard(existingSubmission?.scorecard);
-    setAnnotations(existingSubmission?.annotations || '');
-    setDirty(false);
+
+    // Check for saved local vault submission if not in memory
+    let localSavedSubmission: SubmissionEntry | null = null;
+    if (!existingSubmission && typeof window !== 'undefined') {
+      try {
+        const rawVault = localStorage.getItem(`saved_sub_${assignment.id}_${targetStudent.id}`);
+        if (rawVault) {
+          localSavedSubmission = JSON.parse(rawVault);
+        }
+      } catch {}
+    }
+
+    const sub = existingSubmission || localSavedSubmission;
+
+    // Check for active uncommitted draft auto-save
+    let autoDraft: string | null = null;
+    if (typeof window !== 'undefined' && role === 'Student') {
+      try {
+        autoDraft = localStorage.getItem(`active_draft_${assignment.id}_${targetStudent.id}`);
+      } catch {}
+    }
+
+    const initialDraft = autoDraft !== null ? autoDraft : (sub?.text || '');
+    setDraft(initialDraft);
+    setFiles(sub?.files || []);
+    setFeedback(sub?.feedback || '');
+    setScorecard(sub?.scorecard);
+    setAnnotations(sub?.annotations || '');
+    setDirty(autoDraft !== null && autoDraft !== (sub?.text || ''));
     setPage('Editor');
   }
 
@@ -1468,6 +1578,11 @@ export default function App() {
               onDraftChange={(val) => {
                 setDraft(val);
                 setDirty(true);
+                if (active && activeStudent.id && role === 'Student') {
+                  try {
+                    localStorage.setItem(`active_draft_${active.id}_${activeStudent.id}`, val);
+                  } catch {}
+                }
               }}
               files={files}
               onUploadFiles={uploadFiles}
