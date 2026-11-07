@@ -85,7 +85,7 @@ export const AssignmentPayloadSchema = z.object({
   icon: z.string().optional(),
   interactive: InteractiveActivitySchema.optional(),
   localId: z.string().optional(),
-  posted: z.boolean().optional().default(false),
+  posted: z.boolean().optional().default(true),
 });
 
 export const GoogleDriveAttachmentSchema = z.object({

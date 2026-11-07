@@ -22,7 +22,7 @@ export async function GET() {
   if (user.role === 'Student') {
     const studentEntries = entries.filter((entry) => {
       if (entry.kind === 'assignment') {
-        return (entry as { posted?: boolean }).posted === true;
+        return (entry as { posted?: boolean }).posted !== false;
       }
       return true;
     });

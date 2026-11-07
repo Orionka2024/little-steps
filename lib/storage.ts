@@ -1,5 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
+import { INITIAL_ASSIGNMENTS } from './initial-data.ts';
 
 export interface StoredRecord {
   id: string;
@@ -56,11 +57,34 @@ function getFilesFilePath(): string {
 function loadRecordsFromDisk(): StoredRecord[] {
   if (cachedRecords) return cachedRecords;
 
+  const initialAssignmentRecords: StoredRecord[] = INITIAL_ASSIGNMENTS.map((a) => ({
+    id: `local_seedy:${a.id}`,
+    owner: 'local_seedy',
+    kind: 'assignment',
+    payload: JSON.stringify({
+      ...a,
+      posted: true,
+      localId: a.id,
+    }),
+  }));
+
   const filePath = getRecordsFilePath();
   if (existsSync(filePath)) {
     try {
       const content = readFileSync(filePath, 'utf-8');
       cachedRecords = JSON.parse(content) as StoredRecord[];
+      // If records exist on disk but have no assignments and no assignment tombstones, seed INITIAL_ASSIGNMENTS
+      const hasAssignmentsOrTombstones = cachedRecords.some(
+        (r) => r.kind === 'assignment' || r.kind === 'deleted_assignment'
+      );
+      if (!hasAssignmentsOrTombstones) {
+        cachedRecords.push(...initialAssignmentRecords);
+        try {
+          writeFileSync(filePath, JSON.stringify(cachedRecords, null, 2), 'utf-8');
+        } catch {
+          // Ignore if readonly
+        }
+      }
       return cachedRecords;
     } catch {
       // Fallback to empty if parse error
@@ -82,6 +106,7 @@ function loadRecordsFromDisk(): StoredRecord[] {
         localId: 'msg-1',
       }),
     },
+    ...initialAssignmentRecords,
   ];
 
   try {

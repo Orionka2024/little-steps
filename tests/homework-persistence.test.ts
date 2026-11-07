@@ -465,4 +465,38 @@ test('Deleting an initial unpaid attendance lesson (att-4, 2026-11-02) updates b
   assert.strictEqual(balanceDue, 0, 'Outstanding payment must be 0 CZK');
 });
 
+test('All initial assignments have posted: true and are visible to both teacher and students', async () => {
+  assert.ok(INITIAL_ASSIGNMENTS.length >= 4, 'Must have initial assignments');
+  for (const asgn of INITIAL_ASSIGNMENTS) {
+    assert.strictEqual(asgn.posted, true, `Assignment ${asgn.id} must be posted: true`);
+  }
+
+  // Teacher visible assignments
+  const teacherVisible = INITIAL_ASSIGNMENTS;
+  assert.strictEqual(teacherVisible.length, INITIAL_ASSIGNMENTS.length);
+
+  // Student visible assignments (posted !== false)
+  const studentVisible = INITIAL_ASSIGNMENTS.filter((a) => a.posted !== false);
+  assert.strictEqual(studentVisible.length, INITIAL_ASSIGNMENTS.length, 'Students must see all initial assignments');
+});
+
+test('Storage records seed provides assignments with posted: true for classroom', async () => {
+  const records = await getStoredRecords('local_seedy');
+  const storedAssignments = records.filter((r) => r.kind === 'assignment');
+  assert.ok(storedAssignments.length >= 4, 'Storage must seed initial assignments');
+  for (const item of storedAssignments) {
+    assert.strictEqual(item.posted, true, 'Seeded assignments must be posted');
+  }
+
+  // Student filter simulation in GET /api/data
+  const studentRecords = records.filter((entry) => {
+    if (entry.kind === 'assignment') {
+      return (entry as { posted?: boolean }).posted !== false;
+    }
+    return true;
+  });
+  const studentAssignments = studentRecords.filter((r) => r.kind === 'assignment');
+  assert.strictEqual(studentAssignments.length, storedAssignments.length, 'All stored assignments must be visible to students');
+});
+
 

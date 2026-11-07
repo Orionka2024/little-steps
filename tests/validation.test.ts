@@ -52,18 +52,18 @@ test('AssignmentPayloadSchema validates required assignment fields', () => {
   const result = AssignmentPayloadSchema.safeParse(validAssignment);
   assert.ok(result.success);
   if (result.success) {
-    assert.strictEqual(result.data.posted, false, 'Should default posted to false');
+    assert.strictEqual(result.data.posted, true, 'Should default posted to true so homework is visible');
   }
 
-  const postedAssignment = {
+  const unpostedAssignment = {
     ...validAssignment,
-    id: 'a100-posted',
-    posted: true,
+    id: 'a100-unposted',
+    posted: false,
   };
-  const postedResult = AssignmentPayloadSchema.safeParse(postedAssignment);
-  assert.ok(postedResult.success);
-  if (postedResult.success) {
-    assert.strictEqual(postedResult.data.posted, true, 'Should accept posted: true');
+  const unpostedResult = AssignmentPayloadSchema.safeParse(unpostedAssignment);
+  assert.ok(unpostedResult.success);
+  if (unpostedResult.success) {
+    assert.strictEqual(unpostedResult.data.posted, false, 'Should accept explicit posted: false');
   }
 
   // Missing title
@@ -240,8 +240,8 @@ test('Initial datasets adhere to domain constraints and interactive rules', () =
     assert.ok(result.success, `Initial assignment ${assignment.id} must be valid`);
     assert.strictEqual(
       assignment.posted,
-      false,
-      `Initial assignment ${assignment.id} must be unposted (posted: false) by default`
+      true,
+      `Initial assignment ${assignment.id} must be posted (posted: true) so it is visible to students and teacher`
     );
   }
 

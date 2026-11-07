@@ -41,8 +41,8 @@ export function HomeView({
     totalCount > 0 ? Math.min(100, Math.round((completedCount / totalCount) * 100)) : 0;
   const nextAssignment =
     totalCount > 0
-      ? assignments.find((a) => (a.posted ?? true) && getStatus(a) === 'To do') ||
-        assignments.find((a) => a.posted ?? true) ||
+      ? assignments.find((a) => a.posted !== false && getStatus(a) === 'To do') ||
+        assignments.find((a) => a.posted !== false) ||
         assignments[0]
       : null;
 

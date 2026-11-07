@@ -83,7 +83,18 @@ function getInitialClassroomRows(): Entry[] {
     const cached = localStorage.getItem('classroom_saved_rows');
     if (cached) {
       const parsed = JSON.parse(cached);
-      if (Array.isArray(parsed)) return parsed as Entry[];
+      if (Array.isArray(parsed)) {
+        return (parsed as Entry[]).map((entry) => {
+          if (
+            entry.kind === 'assignment' &&
+            ['a0', 'a1', 'a2', 'a3'].includes(entry.id) &&
+            (entry as AssignmentEntry).posted === false
+          ) {
+            return { ...entry, posted: true };
+          }
+          return entry;
+        });
+      }
     }
   } catch {
     // ignore
@@ -301,7 +312,7 @@ export default function App() {
 
   const visibleAssignments = useMemo<AssignmentEntry[]>(() => {
     if (role === 'Teacher') return allAssignments;
-    return allAssignments.filter((a) => a.posted === true);
+    return allAssignments.filter((a) => a.posted !== false);
   }, [allAssignments, role]);
 
   const allMessages = useMemo<MessageEntry[]>(() => {

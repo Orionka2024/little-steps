@@ -50,11 +50,11 @@ export function HomeworkView({
     : 'All homework';
 
   const filteredAssignments = assignments
-    .filter((a) => (role === 'Teacher' ? true : a.posted === true))
+    .filter((a) => (role === 'Teacher' ? true : a.posted !== false))
     .filter((a) => {
       if (activeFilter === 'All homework') return true;
-      if (activeFilter === 'Unposted (Drafts)') return !a.posted;
-      if (activeFilter === 'Posted') return !!a.posted;
+      if (activeFilter === 'Unposted (Drafts)') return a.posted === false;
+      if (activeFilter === 'Posted') return a.posted !== false;
       if (role === 'Teacher') {
         const subs = getStudentSubmissions(a);
         const statuses = Object.values(subs);
