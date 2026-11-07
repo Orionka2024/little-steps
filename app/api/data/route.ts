@@ -9,16 +9,28 @@ import {
 } from '../../../lib/storage';
 import { EntryPayloadSchema, type ValidatedEntry } from '../../../lib/validation';
 
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 export async function GET() {
   const user = await getCurrentUser();
   if (!user) {
     return Response.json(
       { error: 'Please sign in to save your classroom.' },
-      { status: 401 }
+      {
+        status: 401,
+        headers: {
+          'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+        },
+      }
     );
   }
 
   const entries = await getStoredRecords('local_seedy');
+  const headers = {
+    'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+  };
+
   if (user.role === 'Student') {
     const studentEntries = entries.filter((entry) => {
       if (entry.kind === 'assignment') {
@@ -26,9 +38,9 @@ export async function GET() {
       }
       return true;
     });
-    return Response.json(studentEntries);
+    return Response.json(studentEntries, { headers });
   }
-  return Response.json(entries);
+  return Response.json(entries, { headers });
 }
 
 export async function POST(req: Request) {

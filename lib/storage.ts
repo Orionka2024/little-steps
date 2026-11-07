@@ -103,12 +103,41 @@ function loadRecordsFromDisk(): StoredRecord[] {
     try {
       const content = readFileSync(targetPath, 'utf-8');
       cachedRecords = JSON.parse(content) as StoredRecord[];
-      // If records exist on disk but have no assignments and no assignment tombstones, seed INITIAL_ASSIGNMENTS
-      const hasAssignmentsOrTombstones = cachedRecords.some(
-        (r) => r.kind === 'assignment' || r.kind === 'deleted_assignment'
+      // Ensure all INITIAL_ASSIGNMENTS not explicitly deleted are seeded
+      const existingAssignmentIds = new Set(
+        cachedRecords
+          .filter((r) => r.kind === 'assignment')
+          .map((r) => {
+            try {
+              const p = JSON.parse(r.payload);
+              return p.localId || p.id;
+            } catch {
+              return r.id.replace('local_seedy:', '');
+            }
+          })
       );
-      if (!hasAssignmentsOrTombstones) {
-        cachedRecords.push(...initialAssignmentRecords);
+      const tombstoneIds = new Set(
+        cachedRecords
+          .filter((r) => r.kind === 'deleted_assignment')
+          .map((r) => {
+            try {
+              const p = JSON.parse(r.payload);
+              return p.targetId;
+            } catch {
+              return '';
+            }
+          })
+      );
+
+      let updated = false;
+      for (const initRec of initialAssignmentRecords) {
+        const asgnId = initRec.id.replace('local_seedy:', '');
+        if (!existingAssignmentIds.has(asgnId) && !tombstoneIds.has(asgnId)) {
+          cachedRecords.push(initRec);
+          updated = true;
+        }
+      }
+      if (updated) {
         try {
           writeFileSync(filePath, JSON.stringify(cachedRecords, null, 2), 'utf-8');
         } catch {

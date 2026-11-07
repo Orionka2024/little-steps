@@ -89,7 +89,7 @@ function getInitialClassroomRows(): Entry[] {
         return (parsed as Entry[]).map((entry) => {
           if (
             entry.kind === 'assignment' &&
-            ['a0', 'a1', 'a2', 'a3'].includes(entry.id) &&
+            ['a0', 'a1', 'a2', 'a3', 'a4'].includes(entry.id) &&
             (entry as AssignmentEntry).posted === false
           ) {
             return { ...entry, posted: true };
@@ -295,6 +295,72 @@ export default function App() {
         setLoaded(true);
       });
   }, [currentUser]);
+
+  // Periodic background re-synchronization & window-focus live update across devices
+  useEffect(() => {
+    if (!currentUser) return;
+
+    const pullLatestData = () => {
+      // Don't interrupt if the user is actively typing an unsaved draft
+      if (dirty) return;
+
+      fetch('/api/data')
+        .then(async (response) => {
+          if (!response.ok) return null;
+          return response.json() as Promise<Entry[]>;
+        })
+        .then((serverData) => {
+          if (!serverData || !Array.isArray(serverData)) return;
+          const formatted = serverData.map((item) => ({
+            ...item,
+            id: item.localId || item.id,
+          }));
+
+          setRows((prev) => {
+            const prevMap = new Map(prev.map((item) => [item.id, JSON.stringify(item)]));
+            let hasChanges = false;
+            for (const item of formatted) {
+              const prevStr = prevMap.get(item.id);
+              if (!prevStr || prevStr !== JSON.stringify(item)) {
+                hasChanges = true;
+                break;
+              }
+            }
+
+            if (!hasChanges) return prev;
+
+            const nextMap = new Map(prev.map((item) => [item.id, item]));
+            for (const item of formatted) {
+              nextMap.set(item.id, item);
+            }
+            const nextList = Array.from(nextMap.values());
+            persistRows(nextList, 'background_live_sync');
+            return nextList;
+          });
+        })
+        .catch(() => {});
+    };
+
+    // Revalidate when user switches back to this tab/window
+    const handleFocus = () => pullLatestData();
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        pullLatestData();
+      }
+    };
+
+    window.addEventListener('focus', handleFocus);
+    document.addEventListener('visibilitychange', handleVisibility);
+
+    // Auto-poll every 10 seconds for live simultaneous updates without manual page refresh
+    const interval = setInterval(pullLatestData, 10000);
+
+    return () => {
+      window.removeEventListener('focus', handleFocus);
+      document.removeEventListener('visibilitychange', handleVisibility);
+      clearInterval(interval);
+    };
+  }, [currentUser, dirty]);
 
   // Prevent accidental navigation when unsaved changes exist
   useEffect(() => {

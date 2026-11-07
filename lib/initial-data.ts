@@ -158,6 +158,46 @@ export const INITIAL_ASSIGNMENTS: AssignmentEntry[] = [
       ],
     },
   },
+  {
+    id: 'a4',
+    kind: 'assignment',
+    title: 'Would you rather?',
+    type: 'Opinion essay',
+    due: '2026-11-12',
+    minutes: 30,
+    words: 250,
+    description:
+      'Write a 200–250 body paragraph showing your opinion on one of the "Would you rather?" questions we covered in class.',
+    instructions:
+      'Write a 200–250 body paragraph showing your opinion on one of the ‘Would you rather?’ questions we covered in class. Try and use the PEEL structure that we did, and you don’t need to write an introduction or conclusion either.',
+    color: 'peach',
+    icon: '🤔',
+    posted: true,
+    interactive: {
+      type: 'quiz',
+      title: 'Warm-up: Persuasive Arguments Quiz',
+      questions: [
+        {
+          question: 'What makes a "Would You Rather" body paragraph most persuasive?',
+          options: [
+            'Using the PEEL structure with clear Point, Evidence/Explanation, and Link',
+            'Repeating your choice over and over without reasons',
+            'Writing only one short sentence',
+          ],
+          correctIndex: 0,
+          explanation:
+            'The PEEL structure (Point, Explanation, Evidence, Link) ensures your argument is clear, organized, and persuasive!',
+        },
+        {
+          question: 'Which transition phrase is best to compare your choice with the alternative?',
+          options: ['On the other hand', 'In conclusion', 'Suddenly'],
+          correctIndex: 0,
+          explanation:
+            '"On the other hand" is a great transitional phrase to contrast two opposing choices!',
+        },
+      ],
+    },
+  },
 ];
 
 export const INITIAL_MATERIALS: MaterialEntry[] = [
