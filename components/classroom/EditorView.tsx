@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   ArrowLeft,
   Paperclip,
@@ -17,6 +17,13 @@ import {
   Minimize2,
   BookOpen,
   FileText,
+  Undo2,
+  Redo2,
+  Volume2,
+  VolumeX,
+  Bold,
+  Italic,
+  List,
 } from 'lucide-react';
 import type {
   AssignmentEntry,
@@ -30,6 +37,74 @@ import { STUDENTS } from '../../lib/types';
 import { InteractiveActivityContainer } from './interactive/InteractiveActivityContainer';
 import { AnnotationCanvas } from './AnnotationCanvas';
 import { ScorecardWidget } from './ScorecardWidget';
+interface ConnectorGroup {
+  category: string;
+  color: string;
+  textColor: string;
+  words: string[];
+}
+
+const CONNECTOR_GROUPS: ConnectorGroup[] = [
+  {
+    category: '💡 Starters',
+    color: '#e8f0fe',
+    textColor: '#1967d2',
+    words: [
+      'In my opinion,',
+      'I believe that',
+      'One reason is that',
+      'Another point is that',
+      'To begin with,',
+    ],
+  },
+  {
+    category: '➕ Adding',
+    color: '#e6f4ea',
+    textColor: '#137333',
+    words: [
+      'In addition,',
+      'Furthermore,',
+      'Also,',
+      'Moreover,',
+      'What is more,',
+    ],
+  },
+  {
+    category: '⚖️ Contrasting',
+    color: '#fef7e0',
+    textColor: '#b06000',
+    words: [
+      'However,',
+      'On the other hand,',
+      'Although',
+      'Even though',
+      'Instead,',
+    ],
+  },
+  {
+    category: '🔍 Examples',
+    color: '#f3e8fd',
+    textColor: '#7627bb',
+    words: [
+      'For example,',
+      'For instance,',
+      'In particular,',
+      'Such as',
+    ],
+  },
+  {
+    category: '🏁 Ending',
+    color: '#fce8e6',
+    textColor: '#c5221f',
+    words: [
+      'In conclusion,',
+      'To sum up,',
+      'Finally,',
+      'All in all,',
+      'In the end,',
+    ],
+  },
+];
 
 interface EditorViewProps {
   role: Role;
@@ -103,6 +178,433 @@ export function EditorView({
   const [showPromptInFullScreen, setShowPromptInFullScreen] = useState<boolean>(true);
   const [fontSizeLevel, setFontSizeLevel] = useState<'normal' | 'large' | 'huge'>('large');
   const [isWideMode, setIsWideMode] = useState<boolean>(false);
+  const [showConnectors, setShowConnectors] = useState<boolean>(false);
+  const [isSpeaking, setIsSpeaking] = useState<boolean>(false);
+  const [history, setHistory] = useState<string[]>([draft]);
+  const [historyIndex, setHistoryIndex] = useState<number>(0);
+  const lastPushTimeRef = useRef<number>(Date.now());
+  const standardTextareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const fullScreenTextareaRef = useRef<HTMLTextAreaElement | null>(null);
+
+  // Stop speech synthesis on unmount
+  useEffect(() => {
+    return () => {
+      if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+        window.speechSynthesis.cancel();
+      }
+    };
+  }, []);
+
+  // Sync undo history when reviewing student or assignment changes
+  useEffect(() => {
+    setHistory([draft]);
+    setHistoryIndex(0);
+    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
+      setIsSpeaking(false);
+    }
+  }, [reviewingStudent.id, currentStudent.id, assignment.id]);
+
+  const handleDraftChangeWithHistory = (newDraft: string, immediate = false) => {
+    onDraftChange(newDraft);
+    const now = Date.now();
+    if (
+      immediate ||
+      now - lastPushTimeRef.current > 900 ||
+      Math.abs(newDraft.length - (history[historyIndex]?.length || 0)) > 5
+    ) {
+      lastPushTimeRef.current = now;
+      setHistory((prev) => {
+        const upToCurrent = prev.slice(0, historyIndex + 1);
+        if (upToCurrent[upToCurrent.length - 1] === newDraft) return upToCurrent;
+        return [...upToCurrent, newDraft].slice(-40);
+      });
+      setHistoryIndex((prev) => Math.min(prev + 1, 39));
+    } else {
+      setHistory((prev) => {
+        const copy = [...prev];
+        copy[historyIndex] = newDraft;
+        return copy;
+      });
+    }
+  };
+
+  const canUndo = historyIndex > 0;
+  const canRedo = historyIndex < history.length - 1;
+
+  const handleUndo = () => {
+    if (canUndo) {
+      const nextIndex = historyIndex - 1;
+      setHistoryIndex(nextIndex);
+      onDraftChange(history[nextIndex]);
+    }
+  };
+
+  const handleRedo = () => {
+    if (canRedo) {
+      const nextIndex = historyIndex + 1;
+      setHistoryIndex(nextIndex);
+      onDraftChange(history[nextIndex]);
+    }
+  };
+
+  const insertTextAtCursor = (textToInsert: string) => {
+    const el = isFullScreen ? fullScreenTextareaRef.current : standardTextareaRef.current;
+    if (!el) {
+      const updated = draft ? `${draft} ${textToInsert} ` : `${textToInsert} `;
+      handleDraftChangeWithHistory(updated, true);
+      return;
+    }
+    const start = el.selectionStart ?? draft.length;
+    const end = el.selectionEnd ?? draft.length;
+    const before = draft.slice(0, start);
+    const after = draft.slice(end);
+    const needsSpaceBefore = start > 0 && !/\s$/.test(before);
+    const prefix = needsSpaceBefore ? ' ' : '';
+    const insertion = `${prefix}${textToInsert} `;
+    const nextValue = before + insertion + after;
+    handleDraftChangeWithHistory(nextValue, true);
+    setTimeout(() => {
+      el.focus();
+      const newPos = start + insertion.length;
+      el.setSelectionRange(newPos, newPos);
+    }, 20);
+  };
+
+  const wrapSelection = (prefix: string, suffix: string, defaultText = 'text') => {
+    const el = isFullScreen ? fullScreenTextareaRef.current : standardTextareaRef.current;
+    if (!el) return;
+    const start = el.selectionStart ?? draft.length;
+    const end = el.selectionEnd ?? draft.length;
+    const selected = draft.slice(start, end);
+    const replacement = selected
+      ? `${prefix}${selected}${suffix}`
+      : `${prefix}${defaultText}${suffix}`;
+    const nextValue = draft.slice(0, start) + replacement + draft.slice(end);
+    handleDraftChangeWithHistory(nextValue, true);
+    setTimeout(() => {
+      el.focus();
+      if (selected) {
+        el.setSelectionRange(start + prefix.length, end + prefix.length);
+      } else {
+        el.setSelectionRange(
+          start + prefix.length,
+          start + prefix.length + defaultText.length
+        );
+      }
+    }, 20);
+  };
+
+  const handleToggleSpeech = () => {
+    if (typeof window === 'undefined' || !('speechSynthesis' in window)) {
+      alert('Speech synthesis is not supported on this device/browser.');
+      return;
+    }
+    if (isSpeaking) {
+      window.speechSynthesis.cancel();
+      setIsSpeaking(false);
+      return;
+    }
+    const textToRead = draft.trim();
+    if (!textToRead) {
+      alert('Write a sentence or paragraph first to listen to it read aloud!');
+      return;
+    }
+    window.speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(textToRead);
+    utterance.lang = 'en-US';
+    utterance.rate = 0.88; // Slightly slower, clear enunciation for young English learners
+    utterance.onend = () => setIsSpeaking(false);
+    utterance.onerror = () => setIsSpeaking(false);
+    setIsSpeaking(true);
+    window.speechSynthesis.speak(utterance);
+  };
+
+  const renderWritingToolbar = () => (
+    <div
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '6px',
+        marginBottom: '10px',
+        width: '100%',
+      }}
+    >
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          flexWrap: 'wrap',
+          gap: '8px',
+          padding: '6px 10px',
+          background: '#f9f8f4',
+          border: '1px solid #e3ddcf',
+          borderRadius: '8px',
+        }}
+      >
+        {/* Left tool group: Undo/Redo & Formatting */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexWrap: 'wrap' }}>
+          <button
+            type="button"
+            onClick={handleUndo}
+            disabled={!canUndo || role === 'Teacher'}
+            title="Undo last change (Ctrl+Z)"
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '4px',
+              padding: '4px 8px',
+              borderRadius: '5px',
+              fontSize: '12px',
+              fontWeight: 600,
+              cursor: canUndo && role !== 'Teacher' ? 'pointer' : 'default',
+              border: '1px solid #d5cfc2',
+              background: '#ffffff',
+              color: canUndo && role !== 'Teacher' ? '#273f3b' : '#a8a59e',
+              opacity: canUndo && role !== 'Teacher' ? 1 : 0.6,
+            }}
+          >
+            <Undo2 size={13} /> Undo
+          </button>
+          <button
+            type="button"
+            onClick={handleRedo}
+            disabled={!canRedo || role === 'Teacher'}
+            title="Redo (Ctrl+Y)"
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '4px',
+              padding: '4px 8px',
+              borderRadius: '5px',
+              fontSize: '12px',
+              fontWeight: 600,
+              cursor: canRedo && role !== 'Teacher' ? 'pointer' : 'default',
+              border: '1px solid #d5cfc2',
+              background: '#ffffff',
+              color: canRedo && role !== 'Teacher' ? '#273f3b' : '#a8a59e',
+              opacity: canRedo && role !== 'Teacher' ? 1 : 0.6,
+            }}
+          >
+            <Redo2 size={13} /> Redo
+          </button>
+
+          <span style={{ width: '1px', height: '16px', background: '#dcd6ca', margin: '0 4px' }} />
+
+          <button
+            type="button"
+            onClick={() => wrapSelection('**', '**', 'important')}
+            disabled={role === 'Teacher'}
+            title="Bold (emphasize key words)"
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              width: '28px',
+              height: '26px',
+              borderRadius: '5px',
+              border: '1px solid #d5cfc2',
+              background: '#ffffff',
+              color: role !== 'Teacher' ? '#273f3b' : '#a8a59e',
+              cursor: role !== 'Teacher' ? 'pointer' : 'default',
+              fontWeight: 700,
+              fontSize: '13px',
+            }}
+          >
+            <Bold size={13} />
+          </button>
+
+          <button
+            type="button"
+            onClick={() => wrapSelection('*', '*', 'words')}
+            disabled={role === 'Teacher'}
+            title="Italic"
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              width: '28px',
+              height: '26px',
+              borderRadius: '5px',
+              border: '1px solid #d5cfc2',
+              background: '#ffffff',
+              color: role !== 'Teacher' ? '#273f3b' : '#a8a59e',
+              cursor: role !== 'Teacher' ? 'pointer' : 'default',
+              fontWeight: 600,
+              fontSize: '13px',
+            }}
+          >
+            <Italic size={13} />
+          </button>
+
+          <button
+            type="button"
+            onClick={() => insertTextAtCursor('\n• ')}
+            disabled={role === 'Teacher'}
+            title="Insert bullet list item"
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              width: '28px',
+              height: '26px',
+              borderRadius: '5px',
+              border: '1px solid #d5cfc2',
+              background: '#ffffff',
+              color: role !== 'Teacher' ? '#273f3b' : '#a8a59e',
+              cursor: role !== 'Teacher' ? 'pointer' : 'default',
+            }}
+          >
+            <List size={13} />
+          </button>
+        </div>
+
+        {/* Right tool group: Read Aloud & Connectors Drawer */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+          <button
+            type="button"
+            onClick={handleToggleSpeech}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '5px',
+              padding: '4px 10px',
+              borderRadius: '6px',
+              fontSize: '12px',
+              fontWeight: 600,
+              cursor: 'pointer',
+              background: isSpeaking ? '#fde8e8' : '#eaf4ee',
+              border: `1px solid ${isSpeaking ? '#f1aeb5' : '#b2d8c3'}`,
+              color: isSpeaking ? '#b02a37' : '#1e6648',
+            }}
+            title={isSpeaking ? 'Click to stop reading' : 'Listen to your essay read aloud in clear English'}
+          >
+            {isSpeaking ? <VolumeX size={14} /> : <Volume2 size={14} />}
+            {isSpeaking ? 'Stop listening' : 'Listen to essay'}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setShowConnectors((v) => !v)}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '5px',
+              padding: '4px 10px',
+              borderRadius: '6px',
+              fontSize: '12px',
+              fontWeight: 600,
+              cursor: 'pointer',
+              background: showConnectors ? '#e8f0fe' : '#ffffff',
+              border: `1px solid ${showConnectors ? '#1967d2' : '#d5cfc2'}`,
+              color: showConnectors ? '#1967d2' : '#3c4043',
+            }}
+            title="Open linking words and sentence starters helper"
+          >
+            <Sparkles size={13} color="#1967d2" />
+            <span>Linking words & starters</span>
+            <span style={{ fontSize: '10px', opacity: 0.7 }}>{showConnectors ? '▲' : '▼'}</span>
+          </button>
+        </div>
+      </div>
+
+      {/* Expandable Linking Words Drawer */}
+      {showConnectors && (
+        <div
+          style={{
+            background: '#ffffff',
+            border: '1px solid #dce4d9',
+            borderRadius: '10px',
+            padding: '12px 14px',
+            boxShadow: '0 3px 10px rgba(0,0,0,0.05)',
+          }}
+        >
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              marginBottom: '8px',
+            }}
+          >
+            <span
+              style={{
+                fontSize: '11px',
+                fontWeight: 700,
+                color: '#286654',
+                textTransform: 'uppercase',
+                letterSpacing: '0.04em',
+              }}
+            >
+              ✦ Click any word to insert it into your essay:
+            </span>
+            <button
+              type="button"
+              onClick={() => setShowConnectors(false)}
+              style={{
+                background: 'none',
+                border: 'none',
+                fontSize: '11px',
+                color: '#747970',
+                cursor: 'pointer',
+                textDecoration: 'underline',
+              }}
+            >
+              Close helper
+            </button>
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            {CONNECTOR_GROUPS.map((group) => (
+              <div
+                key={group.category}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  flexWrap: 'wrap',
+                }}
+              >
+                <span
+                  style={{
+                    fontSize: '11px',
+                    fontWeight: 700,
+                    color: '#474d49',
+                    minWidth: '92px',
+                  }}
+                >
+                  {group.category}:
+                </span>
+                {group.words.map((w) => (
+                  <button
+                    key={w}
+                    type="button"
+                    onClick={() => insertTextAtCursor(w)}
+                    disabled={role === 'Teacher'}
+                    style={{
+                      background: group.color,
+                      color: group.textColor,
+                      border: '1px solid rgba(0,0,0,0.06)',
+                      borderRadius: '6px',
+                      padding: '3px 9px',
+                      fontSize: '12px',
+                      fontWeight: 600,
+                      cursor: role === 'Teacher' ? 'default' : 'pointer',
+                    }}
+                    title={`Insert "${w}" at your cursor`}
+                  >
+                    + {w}
+                  </button>
+                ))}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+
   const [prevSubmissionKey, setPrevSubmissionKey] = useState<string | undefined>(
     submission?.id
   );
@@ -601,29 +1103,37 @@ ${draft}
                 </AnnotationCanvas>
               </div>
             ) : (
-              <textarea
-                aria-label="Homework work"
-                placeholder={
-                  role === 'Teacher'
-                    ? `${reviewingStudent.name} has not submitted work or notes yet.`
-                    : assignment.taskType === 'flashcards'
-                    ? 'Practice using your flashcard vocabulary words in 2-3 sentences here, or jot down notes...'
-                    : assignment.taskType === 'test'
-                    ? 'Write down any reflection, notes, or questions for your teacher here...'
-                    : assignment.taskType === 'word_scramble' || assignment.taskType === 'connecting_words'
-                    ? 'Write sentences using your new vocabulary and transition phrases here...'
-                    : 'I want to tell you about…'
-                }
-                value={draft}
-                readOnly={role === 'Teacher'}
-                onChange={(e) => onDraftChange(e.target.value)}
-                maxLength={50000}
-                style={{
-                  minHeight: isWideMode ? '580px' : '460px',
-                  fontSize: fontSizeLevel === 'huge' ? '18px' : fontSizeLevel === 'large' ? '16px' : '15px',
-                  lineHeight: '2.2rem',
-                }}
-              />
+              <>
+                {renderWritingToolbar()}
+                <textarea
+                  ref={standardTextareaRef}
+                  aria-label="Homework work"
+                  placeholder={
+                    role === 'Teacher'
+                      ? `${reviewingStudent.name} has not submitted work or notes yet.`
+                      : assignment.taskType === 'flashcards'
+                      ? 'Practice using your flashcard vocabulary words in 2-3 sentences here, or jot down notes...'
+                      : assignment.taskType === 'test'
+                      ? 'Write down any reflection, notes, or questions for your teacher here...'
+                      : assignment.taskType === 'word_scramble' || assignment.taskType === 'connecting_words'
+                      ? 'Write sentences using your new vocabulary and transition phrases here...'
+                      : 'I want to tell you about…'
+                  }
+                  value={draft}
+                  readOnly={role === 'Teacher'}
+                  onChange={(e) => handleDraftChangeWithHistory(e.target.value)}
+                  maxLength={50000}
+                  spellCheck={true}
+                  lang="en"
+                  autoCapitalize="sentences"
+                  autoCorrect="on"
+                  style={{
+                    minHeight: isWideMode ? '580px' : '460px',
+                    fontSize: fontSizeLevel === 'huge' ? '18px' : fontSizeLevel === 'large' ? '16px' : '15px',
+                    lineHeight: '2.2rem',
+                  }}
+                />
+              </>
             )}
 
             <div className="writing-bottom">
@@ -1292,7 +1802,11 @@ ${draft}
                 }}
               />
 
+              {/* Student Writing Tools Toolbar inside Big Screen */}
+              {renderWritingToolbar()}
+
               <textarea
+                ref={fullScreenTextareaRef}
                 aria-label="Homework work (Big Screen)"
                 placeholder={
                   role === 'Teacher'
@@ -1301,8 +1815,12 @@ ${draft}
                 }
                 value={draft}
                 readOnly={role === 'Teacher'}
-                onChange={(e) => onDraftChange(e.target.value)}
+                onChange={(e) => handleDraftChangeWithHistory(e.target.value)}
                 maxLength={50000}
+                spellCheck={true}
+                lang="en"
+                autoCapitalize="sentences"
+                autoCorrect="on"
                 style={{
                   width: '100%',
                   flex: 1,
