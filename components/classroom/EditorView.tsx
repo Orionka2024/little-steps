@@ -37,6 +37,7 @@ import { STUDENTS } from '../../lib/types';
 import { InteractiveActivityContainer } from './interactive/InteractiveActivityContainer';
 import { AnnotationCanvas } from './AnnotationCanvas';
 import { ScorecardWidget } from './ScorecardWidget';
+import { AiEssayReviewAssistant } from './AiEssayReviewAssistant';
 interface ConnectorGroup {
   category: string;
   color: string;
@@ -137,6 +138,7 @@ interface EditorViewProps {
   onTogglePost?: (assignment: AssignmentEntry) => void;
   onEditAssignment?: (assignment: AssignmentEntry) => void;
   onDeleteAssignment?: (assignment: AssignmentEntry) => void;
+  onToast?: (message: string) => void;
 }
 
 export function EditorView({
@@ -170,6 +172,7 @@ export function EditorView({
   onTogglePost,
   onEditAssignment,
   onDeleteAssignment,
+  onToast,
 }: EditorViewProps) {
   const [markupMode, setMarkupMode] = useState<boolean>(false);
   const [showStudentMarkup, setShowStudentMarkup] = useState<boolean>(true);
@@ -1310,6 +1313,20 @@ ${draft}
                 Open the writing guide <ChevronRight size={16} />
               </button>
             </div>
+
+            {/* Optional AI Preliminary Review & Teacher Advising Tool (Pro Feature Preview) */}
+            {role === 'Teacher' && (
+              <AiEssayReviewAssistant
+                role={role}
+                student={reviewingStudent}
+                assignment={assignment}
+                draft={draft}
+                feedback={feedback}
+                onFeedbackChange={onFeedbackChange}
+                onApplyScorecard={onSaveScorecard}
+                onToast={onToast}
+              />
+            )}
 
             <ScorecardWidget
               role={role}

@@ -1651,6 +1651,7 @@ export default function App() {
               }}
               onEditAssignment={handleOpenEditAssignment}
               onDeleteAssignment={handleDeleteAssignment}
+              onToast={setToast}
             />
           )}
 
