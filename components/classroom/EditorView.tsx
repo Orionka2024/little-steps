@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   ArrowLeft,
   Paperclip,
@@ -13,6 +13,10 @@ import {
   PenTool,
   Pencil,
   Download,
+  Maximize2,
+  Minimize2,
+  BookOpen,
+  FileText,
 } from 'lucide-react';
 import type {
   AssignmentEntry,
@@ -95,9 +99,24 @@ export function EditorView({
   const [markupMode, setMarkupMode] = useState<boolean>(false);
   const [showStudentMarkup, setShowStudentMarkup] = useState<boolean>(true);
   const [localAnnotations, setLocalAnnotations] = useState<string | null>(null);
+  const [isFullScreen, setIsFullScreen] = useState<boolean>(false);
+  const [showPromptInFullScreen, setShowPromptInFullScreen] = useState<boolean>(true);
+  const [fontSizeLevel, setFontSizeLevel] = useState<'normal' | 'large' | 'huge'>('large');
+  const [isWideMode, setIsWideMode] = useState<boolean>(false);
   const [prevSubmissionKey, setPrevSubmissionKey] = useState<string | undefined>(
     submission?.id
   );
+
+  // Press Esc to exit full screen
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isFullScreen) {
+        setIsFullScreen(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isFullScreen]);
 
   // Adjust state during render if target submission changed (React recommended pattern)
   if (submission?.id !== prevSubmissionKey) {
@@ -350,7 +369,7 @@ ${draft}
         </div>
       )}
 
-      <div className="editor-grid">
+      <div className="editor-grid" style={{ gridTemplateColumns: isWideMode ? '1fr' : undefined }}>
         <div>
           <div className="instructions">
             <h3>
@@ -389,6 +408,52 @@ ${draft}
                     ? 'Your first draft starts here'
                     : `Your first draft starts here (${currentStudent.name})`}
                 </h3>
+
+                {/* Big Screen Expand Button */}
+                <button
+                  type="button"
+                  onClick={() => setIsFullScreen(true)}
+                  title="Expand to big screen full-screen focus writing mode"
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '5px',
+                    padding: '4px 10px',
+                    borderRadius: '6px',
+                    fontSize: '11px',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    border: '1px solid #286654',
+                    background: '#eef6f2',
+                    color: '#286654',
+                    transition: 'all 0.15s ease',
+                  }}
+                >
+                  <Maximize2 size={13} />
+                  Big Screen Focus
+                </button>
+
+                {/* Wide Mode in-page toggle */}
+                <button
+                  type="button"
+                  onClick={() => setIsWideMode(!isWideMode)}
+                  title={isWideMode ? 'Show side helper column' : 'Hide side column to widen writing paper'}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                    padding: '4px 8px',
+                    borderRadius: '6px',
+                    fontSize: '11px',
+                    fontWeight: 500,
+                    cursor: 'pointer',
+                    border: '1px solid #d2ded0',
+                    background: isWideMode ? '#f0f4ee' : '#ffffff',
+                    color: '#465a4c',
+                  }}
+                >
+                  {isWideMode ? 'Normal width' : 'Wider screen'}
+                </button>
 
                 {/* Teacher iPad Pencil Markup Toggle */}
                 {role === 'Teacher' && (
@@ -441,7 +506,7 @@ ${draft}
                 )}
               </div>
 
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 {draft.trim().length > 0 && (
                   <button
                     type="button"
@@ -465,7 +530,7 @@ ${draft}
                     Download essay
                   </button>
                 )}
-                <span>{wordCount} words</span>
+                <span style={{ fontWeight: 600, color: '#4a5d51' }}>{wordCount} words</span>
               </div>
             </div>
 
@@ -553,6 +618,11 @@ ${draft}
                 readOnly={role === 'Teacher'}
                 onChange={(e) => onDraftChange(e.target.value)}
                 maxLength={50000}
+                style={{
+                  minHeight: isWideMode ? '580px' : '460px',
+                  fontSize: fontSizeLevel === 'huge' ? '18px' : fontSizeLevel === 'large' ? '16px' : '15px',
+                  lineHeight: '2.2rem',
+                }}
               />
             )}
 
@@ -684,128 +754,613 @@ ${draft}
           )}
         </div>
 
-        <aside>
-          {role === 'Teacher' && submission?.activityScore && (
-            <div
-              style={{
-                background: '#fffdf4',
-                border: '1px solid #ebd9a2',
-                borderRadius: '12px',
-                padding: '16px',
-                marginBottom: '18px',
-              }}
-            >
-              <span style={{ fontSize: '11px', color: '#856404', fontWeight: 700 }}>
-                <Sparkles size={13} style={{ display: 'inline', verticalAlign: '-2px' }} />{' '}
-                EDUTAINMENT SCORE
-              </span>
-              <h4 style={{ margin: '6px 0 4px', fontSize: '16px', color: '#273f3b' }}>
-                {submission.studentName || reviewingStudent.name} scored{' '}
-                <strong style={{ color: '#286654' }}>
-                  {submission.activityScore.score}/{submission.activityScore.total}
-                </strong>{' '}
-                ⭐
-              </h4>
-              <small style={{ color: '#747970' }}>
-                Completed warm-up activity
-              </small>
+        {!isWideMode && (
+          <aside>
+            {role === 'Teacher' && submission?.activityScore && (
+              <div
+                style={{
+                  background: '#fffdf4',
+                  border: '1px solid #ebd9a2',
+                  borderRadius: '12px',
+                  padding: '16px',
+                  marginBottom: '18px',
+                }}
+              >
+                <span style={{ fontSize: '11px', color: '#856404', fontWeight: 700 }}>
+                  <Sparkles size={13} style={{ display: 'inline', verticalAlign: '-2px' }} />{' '}
+                  EDUTAINMENT SCORE
+                </span>
+                <h4 style={{ margin: '6px 0 4px', fontSize: '16px', color: '#273f3b' }}>
+                  {submission.studentName || reviewingStudent.name} scored{' '}
+                  <strong style={{ color: '#286654' }}>
+                    {submission.activityScore.score}/{submission.activityScore.total}
+                  </strong>{' '}
+                  ⭐
+                </h4>
+                <small style={{ color: '#747970' }}>
+                  Completed warm-up activity
+                </small>
+              </div>
+            )}
+
+            <div className="tip-box">
+              <span>✦ WRITER’S LITTLE HELPER</span>
+              <h3>Stuck on your first sentence?</h3>
+              <p>Close your eyes and picture your idea. What is the first thing you notice?</p>
+              <hr />
+              <strong>Try these little steps</strong>
+              <p>
+                1. Gather three ideas.
+                <br />
+                2. Choose your favourite.
+                <br />
+                3. Write as if you’re telling a friend.
+              </p>
+              <button className="text-button" onClick={onOpenWritingGuide}>
+                Open the writing guide <ChevronRight size={16} />
+              </button>
             </div>
-          )}
 
-          <div className="tip-box">
-            <span>✦ WRITER’S LITTLE HELPER</span>
-            <h3>Stuck on your first sentence?</h3>
-            <p>Close your eyes and picture your idea. What is the first thing you notice?</p>
-            <hr />
-            <strong>Try these little steps</strong>
-            <p>
-              1. Gather three ideas.
-              <br />
-              2. Choose your favourite.
-              <br />
-              3. Write as if you’re telling a friend.
-            </p>
-            <button className="text-button" onClick={onOpenWritingGuide}>
-              Open the writing guide <ChevronRight size={16} />
-            </button>
-          </div>
+            <ScorecardWidget
+              role={role}
+              student={role === 'Teacher' ? reviewingStudent : currentStudent}
+              scorecard={scorecard ?? submission?.scorecard}
+              onSaveScorecard={onSaveScorecard}
+              onInsertToFeedback={(reportText) => {
+                onFeedbackChange(feedback ? `${feedback}\n\n${reportText}` : reportText);
+              }}
+              disabled={busy || !loaded}
+            />
 
-          <ScorecardWidget
-            role={role}
-            student={role === 'Teacher' ? reviewingStudent : currentStudent}
-            scorecard={scorecard ?? submission?.scorecard}
-            onSaveScorecard={onSaveScorecard}
-            onInsertToFeedback={(reportText) => {
-              onFeedbackChange(feedback ? `${feedback}\n\n${reportText}` : reportText);
+            <div className="feedback-box">
+              <h3>Teacher feedback</h3>
+              {role === 'Teacher' ? (
+                <>
+                  <textarea
+                    aria-label="Teacher feedback"
+                    value={feedback}
+                    onChange={(e) => onFeedbackChange(e.target.value)}
+                    placeholder={`Write feedback for ${reviewingStudent.name}…`}
+                  />
+                  <button
+                    className="primary"
+                    disabled={busy || !submission || (!feedback.trim() && !annotations)}
+                    onClick={onReturnFeedback}
+                  >
+                    {annotations ? 'Return feedback & markings' : 'Return feedback'} to{' '}
+                    {reviewingStudent.name} <Check size={16} />
+                  </button>
+                  {submission && onResetSubmission && (
+                    <button
+                      type="button"
+                      style={{
+                        marginTop: '10px',
+                        width: '100%',
+                        background: '#fff',
+                        border: '1px solid #ebd0cf',
+                        color: '#a32b29',
+                        padding: '8px 12px',
+                        borderRadius: '8px',
+                        fontSize: '12px',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '6px',
+                      }}
+                      disabled={busy || !loaded}
+                      onClick={() => {
+                        if (
+                          confirm(
+                            `Reset and clear all homework data for ${reviewingStudent.name}? This will return their assignment to 'To do'.`
+                          )
+                        ) {
+                          onResetSubmission();
+                        }
+                      }}
+                    >
+                      <Trash2 size={13} /> Reset {reviewingStudent.name}’s submission
+                    </button>
+                  )}
+                  {!submission && (
+                    <small>
+                      {reviewingStudent.name} has not submitted any work yet.
+                    </small>
+                  )}
+                </>
+              ) : (
+                <p>
+                  {submission?.feedback ||
+                    'Your feedback will appear here after your teacher reviews your work.'}
+                </p>
+              )}
+            </div>
+          </aside>
+        )}
+      </div>
+
+      {/* Full-screen Big Screen Focus Writing Studio */}
+      {isFullScreen && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Big screen essay writing studio"
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 99999,
+            background: '#f8f6f0',
+            display: 'flex',
+            flexDirection: 'column',
+            height: '100vh',
+            width: '100vw',
+            overflow: 'hidden',
+            color: '#273f3b',
+          }}
+        >
+          {/* Studio Header */}
+          <header
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              padding: '12px 24px',
+              background: '#ffffff',
+              borderBottom: '1px solid #e5dfd5',
+              flexWrap: 'wrap',
+              gap: '12px',
+              boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
             }}
-            disabled={busy || !loaded}
-          />
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+              <button
+                type="button"
+                onClick={() => setIsFullScreen(false)}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  padding: '8px 14px',
+                  background: '#f1ede4',
+                  border: '1px solid #ded6c7',
+                  borderRadius: '8px',
+                  fontWeight: 600,
+                  fontSize: '13px',
+                  cursor: 'pointer',
+                  color: '#273f3b',
+                }}
+                title="Exit big screen mode (Esc)"
+              >
+                <Minimize2 size={16} /> Exit big screen{' '}
+                <span style={{ opacity: 0.6, fontSize: '11px' }}>(Esc)</span>
+              </button>
 
-          <div className="feedback-box">
-            <h3>Teacher feedback</h3>
-            {role === 'Teacher' ? (
-              <>
-                <textarea
-                  aria-label="Teacher feedback"
-                  value={feedback}
-                  onChange={(e) => onFeedbackChange(e.target.value)}
-                  placeholder={`Write feedback for ${reviewingStudent.name}…`}
-                />
-                <button
-                  className="primary"
-                  disabled={busy || !submission || (!feedback.trim() && !annotations)}
-                  onClick={onReturnFeedback}
+              <div>
+                <span
+                  style={{
+                    fontSize: '11px',
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.05em',
+                    color: '#747970',
+                    fontWeight: 700,
+                  }}
                 >
-                  {annotations ? 'Return feedback & markings' : 'Return feedback'} to{' '}
-                  {reviewingStudent.name} <Check size={16} />
+                  {assignment.type || 'Writing'} · {(assignment.taskType || 'essay').toUpperCase()}
+                </span>
+                <h2
+                  style={{
+                    margin: 0,
+                    fontSize: '17px',
+                    fontWeight: 700,
+                    color: '#273f3b',
+                  }}
+                >
+                  {assignment.title}
+                </h2>
+              </div>
+            </div>
+
+            {/* Center controls: Prompt toggle, Word counter, Font zoom */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+              <button
+                type="button"
+                onClick={() => setShowPromptInFullScreen((v) => !v)}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  padding: '6px 12px',
+                  background: showPromptInFullScreen ? '#e8f3ee' : '#ffffff',
+                  border: `1px solid ${showPromptInFullScreen ? '#286654' : '#ded6c7'}`,
+                  color: showPromptInFullScreen ? '#286654' : '#575f5b',
+                  borderRadius: '7px',
+                  fontSize: '13px',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                }}
+              >
+                <BookOpen size={15} />
+                {showPromptInFullScreen ? 'Hide prompt' : 'Show prompt'}
+              </button>
+
+              <div
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  padding: '6px 12px',
+                  background: '#faf8f3',
+                  border: '1px solid #ebd9a2',
+                  borderRadius: '7px',
+                  fontSize: '13px',
+                  fontWeight: 600,
+                  color: '#474d49',
+                }}
+              >
+                <FileText size={15} color="#286654" />
+                <span>
+                  <strong>{wordCount}</strong> {wordCount === 1 ? 'word' : 'words'}
+                  {assignment.words ? ` / ${assignment.words} target` : ''}
+                </span>
+                {assignment.words && wordCount >= assignment.words && (
+                  <span style={{ color: '#286654', marginLeft: '4px' }}>🎯 Target reached!</span>
+                )}
+              </div>
+
+              <div
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  border: '1px solid #ded6c7',
+                  borderRadius: '7px',
+                  overflow: 'hidden',
+                  background: '#ffffff',
+                }}
+              >
+                <button
+                  type="button"
+                  onClick={() => setFontSizeLevel('normal')}
+                  style={{
+                    padding: '5px 10px',
+                    border: 'none',
+                    background: fontSizeLevel === 'normal' ? '#286654' : '#ffffff',
+                    color: fontSizeLevel === 'normal' ? '#ffffff' : '#575f5b',
+                    fontWeight: 600,
+                    fontSize: '12px',
+                    cursor: 'pointer',
+                  }}
+                  title="Standard text size"
+                >
+                  A
                 </button>
-                {submission && onResetSubmission && (
+                <button
+                  type="button"
+                  onClick={() => setFontSizeLevel('large')}
+                  style={{
+                    padding: '5px 10px',
+                    border: 'none',
+                    borderLeft: '1px solid #ded6c7',
+                    borderRight: '1px solid #ded6c7',
+                    background: fontSizeLevel === 'large' ? '#286654' : '#ffffff',
+                    color: fontSizeLevel === 'large' ? '#ffffff' : '#575f5b',
+                    fontWeight: 700,
+                    fontSize: '14px',
+                    cursor: 'pointer',
+                  }}
+                  title="Larger text size"
+                >
+                  A+
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFontSizeLevel('huge')}
+                  style={{
+                    padding: '5px 10px',
+                    border: 'none',
+                    background: fontSizeLevel === 'huge' ? '#286654' : '#ffffff',
+                    color: fontSizeLevel === 'huge' ? '#ffffff' : '#575f5b',
+                    fontWeight: 800,
+                    fontSize: '16px',
+                    cursor: 'pointer',
+                  }}
+                  title="Huge text size"
+                >
+                  A++
+                </button>
+              </div>
+            </div>
+
+            {/* Right actions: Download essay, Save draft, Hand in */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              {draft.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const blob = new Blob([draft], { type: 'text/plain;charset=utf-8' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    const safeTitle = (assignment.title || 'essay').replace(/[^a-z0-9_-]/gi, '_');
+                    const studentTag = role === 'Student' ? currentStudent.name : reviewingStudent.name;
+                    a.download = `${safeTitle}_${studentTag}.txt`;
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(url);
+                  }}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    padding: '8px 12px',
+                    background: '#ffffff',
+                    border: '1px solid #ded6c7',
+                    borderRadius: '8px',
+                    fontSize: '13px',
+                    fontWeight: 600,
+                    color: '#286654',
+                    cursor: 'pointer',
+                  }}
+                  title="Download essay as a text file backup"
+                >
+                  <Download size={15} /> Save file
+                </button>
+              )}
+
+              {role === 'Student' && (
+                <>
                   <button
                     type="button"
-                    style={{
-                      marginTop: '10px',
-                      width: '100%',
-                      background: '#fff',
-                      border: '1px solid #ebd0cf',
-                      color: '#a32b29',
-                      padding: '8px 12px',
-                      borderRadius: '8px',
-                      fontSize: '12px',
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      gap: '6px',
-                    }}
+                    onClick={onSaveDraft}
                     disabled={busy || !loaded}
-                    onClick={() => {
-                      if (
-                        confirm(
-                          `Reset and clear all homework data for ${reviewingStudent.name}? This will return their assignment to 'To do'.`
-                        )
-                      ) {
-                        onResetSubmission();
-                      }
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      padding: '8px 14px',
+                      background: '#ffffff',
+                      border: '1px solid #286654',
+                      borderRadius: '8px',
+                      fontSize: '13px',
+                      fontWeight: 600,
+                      color: '#286654',
+                      cursor: busy ? 'not-allowed' : 'pointer',
+                      opacity: busy ? 0.6 : 1,
                     }}
                   >
-                    <Trash2 size={13} /> Reset {reviewingStudent.name}’s submission
+                    <Check size={15} /> Save draft
                   </button>
-                )}
-                {!submission && (
-                  <small>
-                    {reviewingStudent.name} has not submitted any work yet.
-                  </small>
-                )}
-              </>
-            ) : (
-              <p>
-                {submission?.feedback ||
-                  'Your feedback will appear here after your teacher reviews your work.'}
-              </p>
+
+                  <button
+                    type="button"
+                    onClick={onSubmitHomework}
+                    disabled={busy || !loaded}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      padding: '8px 16px',
+                      background: '#286654',
+                      border: 'none',
+                      borderRadius: '8px',
+                      fontSize: '13px',
+                      fontWeight: 600,
+                      color: '#ffffff',
+                      cursor: busy ? 'not-allowed' : 'pointer',
+                      opacity: busy ? 0.6 : 1,
+                      boxShadow: '0 2px 6px rgba(40,102,84,0.3)',
+                    }}
+                  >
+                    <Send size={15} /> Hand in
+                  </button>
+                </>
+              )}
+            </div>
+          </header>
+
+          {/* Main Writing Canvas */}
+          <div
+            style={{
+              flex: 1,
+              overflowY: 'auto',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              padding: '20px 24px 40px',
+            }}
+          >
+            {/* Collapsible Mission / Prompt banner */}
+            {showPromptInFullScreen && (
+              <div
+                style={{
+                  width: '100%',
+                  maxWidth: '1050px',
+                  background: '#ffffff',
+                  border: '1px solid #ebd9a2',
+                  borderLeft: '5px solid #d4973b',
+                  borderRadius: '12px',
+                  padding: '16px 20px',
+                  marginBottom: '20px',
+                  boxShadow: '0 2px 8px rgba(0,0,0,0.03)',
+                }}
+              >
+                <div
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'flex-start',
+                    gap: '12px',
+                  }}
+                >
+                  <div>
+                    <span
+                      style={{
+                        fontSize: '11px',
+                        fontWeight: 800,
+                        color: '#856404',
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.05em',
+                      }}
+                    >
+                      🎯 WRITING MISSION
+                    </span>
+                    <p
+                      style={{
+                        margin: '6px 0 0',
+                        fontSize: '14px',
+                        lineHeight: '1.5',
+                        color: '#273f3b',
+                        fontWeight: 500,
+                      }}
+                    >
+                      {assignment.instructions}
+                    </p>
+                    {assignment.description && assignment.description !== assignment.instructions && (
+                      <details style={{ marginTop: '10px' }}>
+                        <summary
+                          style={{
+                            fontSize: '13px',
+                            color: '#286654',
+                            cursor: 'pointer',
+                            fontWeight: 600,
+                          }}
+                        >
+                          View assignment description & background notes
+                        </summary>
+                        <div
+                          style={{
+                            marginTop: '8px',
+                            padding: '12px',
+                            background: '#f8f6f0',
+                            borderRadius: '8px',
+                            fontSize: '13px',
+                            lineHeight: '1.6',
+                            color: '#474d49',
+                            whiteSpace: 'pre-wrap',
+                          }}
+                        >
+                          {assignment.description}
+                        </div>
+                      </details>
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setShowPromptInFullScreen(false)}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      color: '#747970',
+                      cursor: 'pointer',
+                      padding: '4px',
+                    }}
+                    title="Hide prompt banner"
+                  >
+                    <X size={16} />
+                  </button>
+                </div>
+              </div>
             )}
+
+            {/* Large Ruled Notebook Desk Paper */}
+            <div
+              style={{
+                width: '100%',
+                maxWidth: '1050px',
+                flex: 1,
+                minHeight: '75vh',
+                background: '#ffffff',
+                borderRadius: '16px',
+                boxShadow: '0 8px 30px rgba(0,0,0,0.07), 0 1px 3px rgba(0,0,0,0.05)',
+                border: '1px solid #e7e1d5',
+                padding: '36px 44px',
+                display: 'flex',
+                flexDirection: 'column',
+                position: 'relative',
+              }}
+            >
+              {/* Notebook left margin accent */}
+              <div
+                style={{
+                  position: 'absolute',
+                  top: '36px',
+                  bottom: '36px',
+                  left: '32px',
+                  width: '2px',
+                  background: '#f2cac7',
+                  pointerEvents: 'none',
+                }}
+              />
+
+              <textarea
+                aria-label="Homework work (Big Screen)"
+                placeholder={
+                  role === 'Teacher'
+                    ? `${reviewingStudent.name} has not submitted work or notes yet.`
+                    : 'I want to tell you about… (Start writing your essay here)'
+                }
+                value={draft}
+                readOnly={role === 'Teacher'}
+                onChange={(e) => onDraftChange(e.target.value)}
+                maxLength={50000}
+                style={{
+                  width: '100%',
+                  flex: 1,
+                  minHeight: '65vh',
+                  border: 'none',
+                  outline: 'none',
+                  resize: 'none',
+                  paddingLeft: '16px',
+                  color: '#273f3b',
+                  fontFamily: 'inherit',
+                  fontSize:
+                    fontSizeLevel === 'huge'
+                      ? '22px'
+                      : fontSizeLevel === 'large'
+                      ? '18px'
+                      : '16px',
+                  lineHeight:
+                    fontSizeLevel === 'huge'
+                      ? '2.8rem'
+                      : fontSizeLevel === 'large'
+                      ? '2.4rem'
+                      : '2.1rem',
+                  backgroundImage:
+                    fontSizeLevel === 'huge'
+                      ? 'repeating-linear-gradient(transparent, transparent 2.7rem, #eef3eb 2.7rem, #eef3eb 2.8rem)'
+                      : fontSizeLevel === 'large'
+                      ? 'repeating-linear-gradient(transparent, transparent 2.3rem, #eef3eb 2.3rem, #eef3eb 2.4rem)'
+                      : 'repeating-linear-gradient(transparent, transparent 2.0rem, #eef3eb 2.0rem, #eef3eb 2.1rem)',
+                  backgroundAttachment: 'local',
+                }}
+              />
+
+              {/* Bottom status & tips */}
+              <div
+                style={{
+                  marginTop: '16px',
+                  paddingTop: '14px',
+                  borderTop: '1px solid #f0eae1',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  fontSize: '12px',
+                  color: '#747970',
+                  flexWrap: 'wrap',
+                  gap: '10px',
+                }}
+              >
+                <span>
+                  💡 <strong>Tip:</strong> Press <strong>Esc</strong> anytime to return to standard view. All changes are saved continuously.
+                </span>
+                <span>
+                  ~{Math.max(1, Math.ceil(wordCount / 180))} min read · {draft.length} characters
+                </span>
+              </div>
+            </div>
           </div>
-        </aside>
-      </div>
+        </div>
+      )}
     </>
   );
 }
