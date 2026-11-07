@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { ChevronRight, LogOut } from 'lucide-react';
+import { ChevronRight, LogOut, ShieldCheck } from 'lucide-react';
 import type { Role, Student } from '../../lib/types';
 import type { ClassroomUser } from '../../lib/auth-types';
 
@@ -13,6 +13,7 @@ interface HeaderProps {
   selectedStudent: Student;
   onStudentChange?: (student: Student) => void;
   onLogout?: () => void;
+  onOpenBackupModal?: () => void;
 }
 
 export function Header({
@@ -22,6 +23,7 @@ export function Header({
   onRoleChange,
   selectedStudent,
   onLogout,
+  onOpenBackupModal,
 }: HeaderProps) {
   const isRealStudent = currentUser?.role === 'Student';
 
@@ -55,6 +57,29 @@ export function Header({
         <div className="avatar small">
           {role === 'Teacher' ? 'T' : isRealStudent ? (currentUser?.avatar || selectedStudent.avatar) : 'S'}
         </div>
+
+        {role === 'Teacher' && onOpenBackupModal && (
+          <button
+            type="button"
+            className="text-button"
+            onClick={onOpenBackupModal}
+            title="Curriculum Backup & Cloud Sync"
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '4px',
+              fontSize: '11px',
+              color: '#286654',
+              fontWeight: 600,
+              background: '#eaf2ec',
+              padding: '4px 8px',
+              borderRadius: '6px',
+              marginLeft: '4px',
+            }}
+          >
+            <ShieldCheck size={13} /> Backup
+          </button>
+        )}
 
         {onLogout && (
           <button

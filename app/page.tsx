@@ -53,8 +53,10 @@ import { MessagesView } from '../components/classroom/MessagesView';
 import { AttendanceView } from '../components/classroom/AttendanceView';
 import { EditorView } from '../components/classroom/EditorView';
 import { ResourceModal, CreateModal } from '../components/classroom/Modals';
+import { BackupModal } from '../components/classroom/BackupModal';
 import { Toast } from '../components/classroom/Toast';
 import { LoginView } from '../components/classroom/LoginView';
+import { saveCurriculumBackup, getLatestCurriculumBackup } from '../lib/backup-storage';
 
 function getInitialUserSession(): ClassroomUser | null {
   if (typeof window === 'undefined') return null;
@@ -102,12 +104,13 @@ function getInitialClassroomRows(): Entry[] {
   return [];
 }
 
-function persistRows(rowsToSave: Entry[]): void {
+function persistRows(rowsToSave: Entry[], trigger?: string): void {
   try {
     localStorage.setItem('classroom_saved_rows', JSON.stringify(rowsToSave));
   } catch {
     // ignore
   }
+  saveCurriculumBackup(rowsToSave, trigger || 'persist_rows').catch(() => {});
 }
 
 export default function App() {
@@ -186,20 +189,25 @@ export default function App() {
       .finally(() => setCheckingAuth(false));
   }, [applyUserSession]);
 
-  // Fetch initial records from storage and merge with client cache
+  // Fetch initial records from storage, combine with durable IndexedDB backup, and heal server if needed
   useEffect(() => {
     if (!currentUser) return;
 
-    fetch('/api/data')
-      .then(async (response) => {
-        if (!response.ok) {
-          const errData = (await response.json()) as { error?: string };
-          throw new Error(errData.error || 'Failed to load classroom data');
-        }
-        return response.json() as Promise<Entry[]>;
-      })
-      .then((serverData) => {
-        const formattedServer = serverData.map((item) => ({
+    Promise.all([
+      fetch('/api/data')
+        .then(async (response) => {
+          if (!response.ok) {
+            const errData = (await response.json()) as { error?: string };
+            throw new Error(errData.error || 'Failed to load classroom data');
+          }
+          return response.json() as Promise<Entry[]>;
+        })
+        .catch(() => null),
+      getLatestCurriculumBackup().catch(() => null),
+    ])
+      .then(([serverData, durableBackup]) => {
+        const rawServer = serverData || [];
+        const formattedServer = rawServer.map((item) => ({
           ...item,
           id: item.localId || item.id,
         }));
@@ -209,6 +217,7 @@ export default function App() {
           const allTombstones = [
             ...formattedServer.filter(isDeletedAttendance),
             ...prev.filter(isDeletedAttendance),
+            ...(durableBackup ? durableBackup.filter(isDeletedAttendance) : []),
           ];
           const allDeletedIds = new Set(allTombstones.map((t) => t.targetId));
           const allDeletedDates = new Set(
@@ -220,8 +229,8 @@ export default function App() {
           const merged = [...formattedServer];
           const unsavedToSync: Entry[] = [];
 
+          // Merge local in-memory/localStorage items
           for (const localItem of prev) {
-            // Guard: Never resurrect attendance records that were deleted
             if (isAttendance(localItem)) {
               if (
                 allDeletedIds.has(localItem.id) ||
@@ -233,11 +242,32 @@ export default function App() {
 
             if (!serverMap.has(localItem.id)) {
               merged.push(localItem);
+              serverMap.set(localItem.id, localItem);
               unsavedToSync.push(localItem);
             }
           }
 
-          persistRows(merged);
+          // Merge durable IndexedDB items (recovers custom assignments if server container rebooted)
+          if (durableBackup) {
+            for (const backupItem of durableBackup) {
+              if (isAttendance(backupItem)) {
+                if (
+                  allDeletedIds.has(backupItem.id) ||
+                  (backupItem.date && allDeletedDates.has(backupItem.date))
+                ) {
+                  continue;
+                }
+              }
+
+              if (!serverMap.has(backupItem.id)) {
+                merged.push(backupItem);
+                serverMap.set(backupItem.id, backupItem);
+                unsavedToSync.push(backupItem);
+              }
+            }
+          }
+
+          persistRows(merged, 'initial_sync_merge');
 
           if (unsavedToSync.length > 0) {
             const syncable = unsavedToSync.filter((entry) => {
@@ -1098,10 +1128,10 @@ export default function App() {
         setEditingAssignment(null);
         setToast(
           isEditing
-            ? `Homework "${title}" updated successfully.`
+            ? `Homework "${title}" updated & safely backed up.`
             : posted
-            ? `Homework "${title}" assigned and posted to the classroom.`
-            : `Homework "${title}" saved as unposted draft. Students cannot see it yet.`
+            ? `Homework "${title}" assigned, posted & safely backed up.`
+            : `Homework "${title}" saved as draft & safely backed up.`
         );
       } else if (modal === 'material') {
         let uploadedFile: FileAttachment | undefined;
@@ -1155,8 +1185,52 @@ export default function App() {
         };
         await saveEntry(newMaterial);
         setModal('');
-        setToast('Material added to classroom.');
+        setToast(`Material "${title}" added to classroom & safely backed up.`);
       }
+    });
+  };
+
+  const handleRestoreCurriculum = async (restoredEntries: Entry[]) => {
+    await action(async () => {
+      const res = await fetch('/api/backup', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-user-role': currentUser?.role || role,
+        },
+        body: JSON.stringify(restoredEntries),
+      });
+
+      if (!res.ok) {
+        const errJson = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(errJson.error || 'Failed to restore curriculum to server.');
+      }
+
+      setRows(restoredEntries);
+      persistRows(restoredEntries, 'manual_restore');
+      setToast(`Curriculum successfully restored (${restoredEntries.length} items).`);
+      setModal('');
+    });
+  };
+
+  const handleForceSyncServer = async () => {
+    await action(async () => {
+      const res = await fetch('/api/data', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-user-role': currentUser?.role || role,
+        },
+        body: JSON.stringify(rows),
+      });
+
+      if (!res.ok) {
+        const errJson = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(errJson.error || 'Failed to synchronize with server.');
+      }
+
+      persistRows(rows, 'force_sync');
+      setToast('Classroom successfully synchronized with cloud server.');
     });
   };
 
@@ -1212,6 +1286,7 @@ export default function App() {
           selectedStudent={activeStudent}
           onStudentChange={handleStudentChange}
           onLogout={handleLogout}
+          onOpenBackupModal={() => setModal('backup')}
         />
 
         <main>
@@ -1256,6 +1331,7 @@ export default function App() {
               onTogglePost={handleTogglePost}
               onEditAssignment={handleOpenEditAssignment}
               onDeleteAssignment={handleDeleteAssignment}
+              onOpenBackupModal={() => setModal('backup')}
             />
           )}
 
@@ -1270,6 +1346,7 @@ export default function App() {
                 setModal('resource');
               }}
               onOpenCreateModal={() => setModal('material')}
+              onOpenBackupModal={() => setModal('backup')}
             />
           )}
 
@@ -1422,6 +1499,16 @@ export default function App() {
             setEditingAssignment(null);
           }}
           onSubmit={handleCreateModalSubmit}
+        />
+      )}
+
+      {modal === 'backup' && (
+        <BackupModal
+          entries={rows}
+          onClose={() => setModal('')}
+          onRestore={handleRestoreCurriculum}
+          onSyncServer={handleForceSyncServer}
+          busy={busy}
         />
       )}
 

@@ -49,9 +49,36 @@ function getRecordsFilePath(): string {
   return path.join(dir, 'classroom_records.json');
 }
 
+function getRecordsBackupFilePath(): string {
+  const dir = getStorageDir();
+  return path.join(dir, 'classroom_records_backup.json');
+}
+
 function getFilesFilePath(): string {
   const dir = getStorageDir();
   return path.join(dir, 'classroom_files.json');
+}
+
+function triggerRemoteBackupSync(records: StoredRecord[]): void {
+  const remoteUrl = process.env.BACKUP_STORAGE_URL || process.env.PERSISTENT_STORAGE_URL;
+  if (!remoteUrl) return;
+
+  try {
+    fetch(remoteUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(process.env.BACKUP_STORAGE_AUTH ? { Authorization: process.env.BACKUP_STORAGE_AUTH } : {}),
+      },
+      body: JSON.stringify({
+        app: 'little-steps',
+        timestamp: new Date().toISOString(),
+        records,
+      }),
+    }).catch(() => {});
+  } catch {
+    // Ignore async network errors in background
+  }
 }
 
 function loadRecordsFromDisk(): StoredRecord[] {
@@ -69,9 +96,12 @@ function loadRecordsFromDisk(): StoredRecord[] {
   }));
 
   const filePath = getRecordsFilePath();
-  if (existsSync(filePath)) {
+  const backupPath = getRecordsBackupFilePath();
+  const targetPath = existsSync(filePath) ? filePath : existsSync(backupPath) ? backupPath : null;
+
+  if (targetPath) {
     try {
-      const content = readFileSync(filePath, 'utf-8');
+      const content = readFileSync(targetPath, 'utf-8');
       cachedRecords = JSON.parse(content) as StoredRecord[];
       // If records exist on disk but have no assignments and no assignment tombstones, seed INITIAL_ASSIGNMENTS
       const hasAssignmentsOrTombstones = cachedRecords.some(
@@ -111,6 +141,7 @@ function loadRecordsFromDisk(): StoredRecord[] {
 
   try {
     writeFileSync(filePath, JSON.stringify(cachedRecords, null, 2), 'utf-8');
+    writeFileSync(backupPath, JSON.stringify(cachedRecords, null, 2), 'utf-8');
   } catch {
     // Ignore if readonly
   }
@@ -126,6 +157,15 @@ function saveRecordsToDisk(records: StoredRecord[]): void {
   } catch {
     // Ignore in read-only environments
   }
+
+  try {
+    const backupPath = getRecordsBackupFilePath();
+    writeFileSync(backupPath, JSON.stringify(records, null, 2), 'utf-8');
+  } catch {
+    // Ignore
+  }
+
+  triggerRemoteBackupSync(records);
 }
 
 function loadFilesFromDisk(): Map<string, StoredFile> {
@@ -349,3 +389,14 @@ export async function getStoredFile(key: string): Promise<{
     contentType: file.contentType,
   };
 }
+
+export async function exportAllStoredRecords(): Promise<StoredRecord[]> {
+  return loadRecordsFromDisk();
+}
+
+export async function restoreStoredRecords(newRecords: StoredRecord[]): Promise<number> {
+  if (!Array.isArray(newRecords) || newRecords.length === 0) return 0;
+  saveRecordsToDisk(newRecords);
+  return newRecords.length;
+}
+

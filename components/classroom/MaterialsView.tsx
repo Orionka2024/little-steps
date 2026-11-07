@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { Plus, Search, ArrowUpRight } from 'lucide-react';
+import { Plus, Search, ArrowUpRight, ShieldCheck } from 'lucide-react';
 import type { MaterialEntry, Role } from '../../lib/types';
 
 interface MaterialsViewProps {
@@ -11,6 +11,7 @@ interface MaterialsViewProps {
   onQueryChange: (newQuery: string) => void;
   onOpenResource: (resource: MaterialEntry) => void;
   onOpenCreateModal: () => void;
+  onOpenBackupModal?: () => void;
 }
 
 export function MaterialsView({
@@ -20,6 +21,7 @@ export function MaterialsView({
   onQueryChange,
   onOpenResource,
   onOpenCreateModal,
+  onOpenBackupModal,
 }: MaterialsViewProps) {
   const filteredResources = resources.filter((r) =>
     `${r.title} ${r.type}`.toLowerCase().includes(query.toLowerCase())
@@ -34,9 +36,21 @@ export function MaterialsView({
           <p>Helpful guides and words to make your ideas shine.</p>
         </div>
         {role === 'Teacher' && (
-          <button className="primary" onClick={onOpenCreateModal}>
-            <Plus size={18} /> Add material
-          </button>
+          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+            {onOpenBackupModal && (
+              <button
+                type="button"
+                className="secondary"
+                onClick={onOpenBackupModal}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+              >
+                <ShieldCheck size={16} /> Backup & Sync
+              </button>
+            )}
+            <button className="primary" onClick={onOpenCreateModal}>
+              <Plus size={18} /> Add material
+            </button>
+          </div>
         )}
       </div>
 

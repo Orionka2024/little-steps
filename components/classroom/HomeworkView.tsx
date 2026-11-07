@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { Plus } from 'lucide-react';
+import { Plus, ShieldCheck } from 'lucide-react';
 import type { AssignmentEntry, HomeworkStatus, Role } from '../../lib/types';
 import { AssignmentCard } from './AssignmentCard';
 
@@ -17,6 +17,7 @@ interface HomeworkViewProps {
   onTogglePost?: (assignment: AssignmentEntry, e: React.MouseEvent) => void;
   onEditAssignment?: (assignment: AssignmentEntry, e: React.MouseEvent) => void;
   onDeleteAssignment?: (assignment: AssignmentEntry, e: React.MouseEvent) => void;
+  onOpenBackupModal?: () => void;
 }
 
 const TEACHER_FILTERS = [
@@ -43,6 +44,7 @@ export function HomeworkView({
   onTogglePost,
   onEditAssignment,
   onDeleteAssignment,
+  onOpenBackupModal,
 }: HomeworkViewProps) {
   const filterOptions = role === 'Teacher' ? TEACHER_FILTERS : STUDENT_FILTERS;
   const activeFilter = (filterOptions as readonly string[]).includes(filter)
@@ -76,9 +78,21 @@ export function HomeworkView({
           </p>
         </div>
         {role === 'Teacher' && (
-          <button className="primary" onClick={onOpenCreateModal}>
-            <Plus size={18} /> Assign homework
-          </button>
+          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+            {onOpenBackupModal && (
+              <button
+                type="button"
+                className="secondary"
+                onClick={onOpenBackupModal}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+              >
+                <ShieldCheck size={16} /> Backup & Sync
+              </button>
+            )}
+            <button className="primary" onClick={onOpenCreateModal}>
+              <Plus size={18} /> Assign homework
+            </button>
+          </div>
         )}
       </div>
 
