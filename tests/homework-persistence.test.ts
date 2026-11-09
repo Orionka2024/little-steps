@@ -465,70 +465,140 @@ test('Deleting an initial unpaid attendance lesson (att-4, 2026-11-02) updates b
   assert.strictEqual(balanceDue, 0, 'Outstanding payment must be 0 CZK');
 });
 
-test('All initial assignments have posted: true and are visible to both teacher and students', async () => {
-  assert.ok(INITIAL_ASSIGNMENTS.length >= 4, 'Must have initial assignments');
-  for (const asgn of INITIAL_ASSIGNMENTS) {
-    assert.strictEqual(asgn.posted, true, `Assignment ${asgn.id} must be posted: true`);
-  }
+test('Only posted assignments are considered active assignments for students (a4 posted, a0-a3 unposted drafts)', async () => {
+  assert.ok(INITIAL_ASSIGNMENTS.length >= 5, 'Must have initial assignments');
+  const posted = INITIAL_ASSIGNMENTS.filter((a) => Boolean(a.posted));
+  const unposted = INITIAL_ASSIGNMENTS.filter((a) => !a.posted);
 
-  // Teacher visible assignments
-  const teacherVisible = INITIAL_ASSIGNMENTS;
-  assert.strictEqual(teacherVisible.length, INITIAL_ASSIGNMENTS.length);
+  assert.strictEqual(posted.length, 1, 'Only 1 assignment (a4) should be posted by default');
+  assert.strictEqual(posted[0].id, 'a4', 'Posted assignment must be a4 ("Would you rather?")');
+  assert.strictEqual(unposted.length, 4, 'Four assignments (a0-a3) should be unposted teacher drafts');
 
-  // Student visible assignments (posted !== false)
-  const studentVisible = INITIAL_ASSIGNMENTS.filter((a) => a.posted !== false);
-  assert.strictEqual(studentVisible.length, INITIAL_ASSIGNMENTS.length, 'Students must see all initial assignments');
+  // Student visible assignments (Boolean(a.posted))
+  const studentVisible = INITIAL_ASSIGNMENTS.filter((a) => Boolean(a.posted));
+  assert.strictEqual(studentVisible.length, 1, 'Students must see only the 1 posted assignment');
 });
 
-test('Storage records seed provides assignments with posted: true for classroom', async () => {
-  const records = await getStoredRecords('local_seedy');
+test('Storage records seed preserves posted vs unposted state and supports Draft -> Handed in -> Reviewed lifecycle', async () => {
+  const testScope = 'local_seedy';
+  const records = await getStoredRecords(testScope);
   const storedAssignments = records.filter((r) => r.kind === 'assignment');
-  assert.ok(storedAssignments.length >= 4, 'Storage must seed initial assignments');
-  for (const item of storedAssignments) {
-    assert.strictEqual(item.posted, true, 'Seeded assignments must be posted');
-  }
+  assert.ok(storedAssignments.length >= 5, 'Storage must seed initial assignments');
 
-  // Student filter simulation in GET /api/data
-  const studentRecords = records.filter((entry) => {
-    if (entry.kind === 'assignment') {
-      return (entry as { posted?: boolean }).posted !== false;
-    }
-    return true;
-  });
-  const studentAssignments = studentRecords.filter((r) => r.kind === 'assignment');
-  assert.strictEqual(studentAssignments.length, storedAssignments.length, 'All stored assignments must be visible to students');
-});
+  const postedStored = storedAssignments.filter((r) => Boolean(r.posted));
+  assert.strictEqual(postedStored.length, 1, 'Only 1 seeded assignment should be posted: true');
 
-test('Student essay submission is safely archived and retrievable across storage loads', async () => {
-  const essay = {
-    id: 's-a4-mark-safe',
+  // 1. Student saves a draft -> shown in Draft
+  const subId = 's-a4-mark-lifecycle';
+  const draftSub = {
+    id: subId,
     kind: 'submission',
     assignment: 'a4',
     studentId: 'mark',
     studentName: 'Mark',
-    text: 'If I had to choose, I would rather speak every human language because understanding people from different cultures opens up the whole world.',
+    text: 'First draft of my Would You Rather essay.',
     files: [],
+    status: 'Draft',
+    updated: new Date().toISOString(),
+  };
+  await upsertStoredRecord(subId, testScope, 'submission', draftSub as unknown as Record<string, unknown>);
+
+  let current = await getStoredRecords(testScope);
+  let saved = current.find((r) => r.localId === subId || r.id === `${testScope}:${subId}`);
+  assert.ok(saved, 'Draft submission must be saved');
+  assert.strictEqual(saved.status, 'Draft', 'Submission status must be Draft');
+
+  // 2. Student hands in the essay -> shown in Handed in
+  const handedInSub = {
+    ...draftSub,
+    text: 'If I had to choose, I would rather speak every human language because understanding people from different cultures opens up the whole world.',
     status: 'Handed in',
     updated: new Date().toISOString(),
   };
+  await upsertStoredRecord(subId, testScope, 'submission', handedInSub as unknown as Record<string, unknown>);
+
+  current = await getStoredRecords(testScope);
+  saved = current.find((r) => r.localId === subId || r.id === `${testScope}:${subId}`);
+  assert.ok(saved, 'Handed in submission must be saved');
+  assert.strictEqual(saved.status, 'Handed in', 'Submission status must be Handed in');
+
+  // 3. Teacher reviews and leaves comments -> shown in Reviewed
+  const reviewedSub = {
+    ...handedInSub,
+    status: 'Reviewed',
+    feedback: 'Wonderful reasoning, Mark! Great use of "because" to support your opinion.',
+    updated: new Date().toISOString(),
+  };
+  await upsertStoredRecord(subId, testScope, 'submission', reviewedSub as unknown as Record<string, unknown>);
+
+  current = await getStoredRecords(testScope);
+  saved = current.find((r) => r.localId === subId || r.id === `${testScope}:${subId}`);
+  assert.ok(saved, 'Reviewed submission must be saved');
+  assert.strictEqual(saved.status, 'Reviewed', 'Submission status must be Reviewed');
+  assert.strictEqual(
+    saved.feedback,
+    'Wonderful reasoning, Mark! Great use of "because" to support your opinion.'
+  );
+
+  // Clean up test record
+  await deleteStoredRecord(subId, testScope);
+});
+
+test('Teacher handwritten Apple Pencil annotations and remarks save with feedback to student submission', async () => {
+  const testScope = 'local_seedy';
+  const subId = 's-test-pencil-annotations';
+  const sampleStrokes = JSON.stringify([
+    {
+      color: '#dc2626',
+      size: 3,
+      points: [
+        { x: 10, y: 15, pressure: 0.5 },
+        { x: 20, y: 25, pressure: 0.6 },
+      ],
+    },
+    {
+      color: '#16a34a',
+      size: 4,
+      isHighlighter: true,
+      points: [
+        { x: 50, y: 60, pressure: 0.5 },
+        { x: 80, y: 60, pressure: 0.7 },
+      ],
+    },
+  ]);
+
+  const submissionWithMarkings = {
+    id: subId,
+    kind: 'submission',
+    assignment: 'a1',
+    studentId: 'hajun',
+    studentName: 'Hajun',
+    text: 'My favourite season is autumn because the leaves turn golden and red.',
+    status: 'Handed in',
+    feedback: 'Excellent imagery with golden and red leaves!',
+    annotations: sampleStrokes,
+    updated: new Date().toISOString(),
+  };
+
+  const parseResult = SubmissionPayloadSchema.safeParse(submissionWithMarkings);
+  assert.ok(parseResult.success, 'Submission with annotations must be valid against schema');
+  assert.strictEqual(parseResult.data.annotations, sampleStrokes, 'Annotations must be preserved');
 
   await upsertStoredRecord(
-    essay.id,
-    'local_seedy',
-    essay.kind,
-    essay as unknown as Record<string, unknown>
+    subId,
+    testScope,
+    'submission',
+    submissionWithMarkings as unknown as Record<string, unknown>
   );
 
-  const stored = await getStoredRecords('local_seedy');
-  const found = stored.find((r) => r.id === `local_seedy:${essay.id}` || r.id === essay.id);
-  assert.ok(found, 'Essay submission must exist in stored records');
-  assert.strictEqual(
-    (found as any).text,
-    'If I had to choose, I would rather speak every human language because understanding people from different cultures opens up the whole world.'
-  );
+  const stored = await getStoredRecords(testScope);
+  const found = stored.find((r) => r.localId === subId || r.id === `${testScope}:${subId}`);
+  assert.ok(found, 'Submission with annotations must be stored');
+  assert.strictEqual(found.annotations, sampleStrokes);
+  assert.strictEqual(found.feedback, 'Excellent imagery with golden and red leaves!');
 
-  // Clean up
-  await deleteStoredRecord(essay.id, 'local_seedy');
+  await deleteStoredRecord(subId, testScope);
 });
+
 
 

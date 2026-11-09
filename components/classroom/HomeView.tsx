@@ -36,14 +36,14 @@ export function HomeView({
   onEditAssignment,
   onDeleteAssignment,
 }: HomeViewProps) {
-  const totalCount = assignments.length;
+  const postedAssignments = assignments.filter((a) => Boolean(a.posted));
+  const totalCount = postedAssignments.length;
   const progressPercent =
     totalCount > 0 ? Math.min(100, Math.round((completedCount / totalCount) * 100)) : 0;
   const nextAssignment =
     totalCount > 0
-      ? assignments.find((a) => a.posted !== false && getStatus(a) === 'To do') ||
-        assignments.find((a) => a.posted !== false) ||
-        assignments[0]
+      ? postedAssignments.find((a) => getStatus(a) === 'To do') ||
+        postedAssignments[0]
       : null;
 
   return (
@@ -125,8 +125,8 @@ export function HomeView({
             </button>
           </div>
           <div className="cards">
-            {assignments.length > 0 ? (
-              assignments.map((a) => (
+            {postedAssignments.length > 0 ? (
+              postedAssignments.map((a) => (
                 <AssignmentCard
                   key={a.id}
                   assignment={a}
@@ -151,7 +151,7 @@ export function HomeView({
               >
                 {role === 'Student'
                   ? 'No homework tasks posted yet. Check back soon or explore the writing guide!'
-                  : 'No homework assignments available.'}
+                  : 'No posted homework assignments yet. Open All homework to post a draft or create a new assignment.'}
               </div>
             )}
           </div>

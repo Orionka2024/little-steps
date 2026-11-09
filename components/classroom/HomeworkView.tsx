@@ -51,19 +51,24 @@ export function HomeworkView({
     ? filter
     : 'All homework';
 
-  const filteredAssignments = assignments
-    .filter((a) => (role === 'Teacher' ? true : a.posted !== false))
-    .filter((a) => {
-      if (activeFilter === 'All homework') return true;
-      if (activeFilter === 'Unposted (Drafts)') return a.posted === false;
-      if (activeFilter === 'Posted') return a.posted !== false;
-      if (role === 'Teacher') {
-        const subs = getStudentSubmissions(a);
-        const statuses = Object.values(subs);
-        return statuses.includes(activeFilter as HomeworkStatus);
-      }
-      return getStatus(a) === activeFilter;
-    });
+  const matchesFilter = (a: AssignmentEntry, targetFilter: string): boolean => {
+    if (role !== 'Teacher' && !a.posted) return false;
+    if (targetFilter === 'All homework') {
+      return role === 'Teacher' ? true : Boolean(a.posted);
+    }
+    if (targetFilter === 'Unposted (Drafts)') return !a.posted;
+    if (targetFilter === 'Posted') return Boolean(a.posted);
+    // Only posted assignments are active classroom assignments for status tabs
+    if (!a.posted) return false;
+    if (role === 'Teacher') {
+      const subs = getStudentSubmissions(a);
+      const statuses = Object.values(subs);
+      return statuses.includes(targetFilter as HomeworkStatus);
+    }
+    return getStatus(a) === targetFilter;
+  };
+
+  const filteredAssignments = assignments.filter((a) => matchesFilter(a, activeFilter));
 
   return (
     <>
@@ -98,15 +103,33 @@ export function HomeworkView({
 
       <div className="toolbar">
         <div className="tabs">
-          {filterOptions.map((f) => (
-            <button
-              key={f}
-              className={activeFilter === f ? 'active' : ''}
-              onClick={() => onFilterChange(f)}
-            >
-              {f}
-            </button>
-          ))}
+          {filterOptions.map((f) => {
+            const count = assignments.filter((a) => matchesFilter(a, f)).length;
+            return (
+              <button
+                key={f}
+                className={activeFilter === f ? 'active' : ''}
+                onClick={() => onFilterChange(f)}
+              >
+                {f}
+                {count > 0 && (
+                  <span
+                    style={{
+                      marginLeft: '6px',
+                      fontSize: '11px',
+                      padding: '1px 6px',
+                      borderRadius: '999px',
+                      background: activeFilter === f ? 'rgba(255,255,255,0.25)' : '#e9efe8',
+                      color: activeFilter === f ? '#fff' : '#286654',
+                      fontWeight: 700,
+                    }}
+                  >
+                    {count}
+                  </span>
+                )}
+              </button>
+            );
+          })}
         </div>
       </div>
 
@@ -129,7 +152,9 @@ export function HomeworkView({
       {filteredAssignments.length === 0 && (
         <div className="empty">
           {role === 'Student'
-            ? 'No homework assignments posted yet. Check back soon for new writing tasks!'
+            ? activeFilter === 'All homework'
+              ? 'No homework assignments posted yet. Check back soon for new writing tasks!'
+              : `No homework assignments in "${activeFilter}" right now.`
             : 'No assignments found under this filter.'}
         </div>
       )}

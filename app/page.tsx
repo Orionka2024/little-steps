@@ -86,16 +86,7 @@ function getInitialClassroomRows(): Entry[] {
     if (cached) {
       const parsed = JSON.parse(cached);
       if (Array.isArray(parsed)) {
-        return (parsed as Entry[]).map((entry) => {
-          if (
-            entry.kind === 'assignment' &&
-            ['a0', 'a1', 'a2', 'a3', 'a4'].includes(entry.id) &&
-            (entry as AssignmentEntry).posted === false
-          ) {
-            return { ...entry, posted: true };
-          }
-          return entry;
-        });
+        return parsed as Entry[];
       }
     }
   } catch {
@@ -156,9 +147,9 @@ export default function App() {
       const matched = STUDENTS.find((s) => s.id === initialUser.studentId);
       if (matched) return matched;
     }
-    return STUDENTS[0];
+    return STUDENTS[1] || STUDENTS[0]; // Default to Mark so active student homework is immediately visible
   });
-  const [reviewingStudent, setReviewingStudent] = useState<Student>(STUDENTS[0]); // Default to Hajun
+  const [reviewingStudent, setReviewingStudent] = useState<Student>(STUDENTS[1] || STUDENTS[0]);
   const [rows, setRows] = useState<Entry[]>(getInitialClassroomRows);
   const [active, setActive] = useState<AssignmentEntry | null>(null);
   const [resource, setResource] = useState<MaterialEntry | null>(null);
@@ -180,7 +171,7 @@ export default function App() {
 
   const isTeacherReviewing =
     role === 'Student' && (currentUser?.role === 'Teacher' || !currentUser?.studentId);
-  const activeStudent = isTeacherReviewing ? PREVIEW_STUDENT : selectedStudent;
+  const activeStudent = selectedStudent;
 
   const applyUserSession = useCallback((user: ClassroomUser) => {
     const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
@@ -221,7 +212,7 @@ export default function App() {
       .finally(() => setCheckingAuth(false));
   }, [applyUserSession]);
 
-  // Fetch initial records from storage, combine with durable IndexedDB backup, and heal server if needed
+  // Fetch initial records from Supabase-backed server and make server state authoritative across all devices
   useEffect(() => {
     if (!currentUser) return;
 
@@ -238,88 +229,50 @@ export default function App() {
       getLatestCurriculumBackup().catch(() => null),
     ])
       .then(([serverData, durableBackup]) => {
-        const rawServer = serverData || [];
-        const formattedServer = rawServer.map((item) => ({
+        if (!serverData) {
+          if (durableBackup && durableBackup.length > 0) {
+            setRows(durableBackup);
+          }
+          setLoaded(true);
+          return;
+        }
+
+        const formattedServer = serverData.map((item) => ({
           ...item,
           id: item.localId || item.id,
         }));
 
-        setRows((prev) => {
-          const serverMap = new Map(formattedServer.map((item) => [item.id, item]));
-          const allTombstones = [
-            ...formattedServer.filter(isDeletedAttendance),
-            ...prev.filter(isDeletedAttendance),
-            ...(durableBackup ? durableBackup.filter(isDeletedAttendance) : []),
-          ];
-          const allDeletedIds = new Set(allTombstones.map((t) => t.targetId));
-          const allDeletedDates = new Set(
-            allTombstones
-              .map((t) => (t as unknown as { date?: string }).date)
-              .filter((d): d is string => Boolean(d))
-          );
+        const pendingQueue = getPendingSyncQueue();
+        const serverMap = new Map(formattedServer.map((item) => [item.id, item]));
 
-          const merged = [...formattedServer];
-          const unsavedToSync: Entry[] = [];
+        // Only merge items that were explicitly queued while offline
+        for (const pendingItem of pendingQueue) {
+          serverMap.set(pendingItem.id, pendingItem);
+        }
 
-          // Merge local in-memory/localStorage items
-          for (const localItem of prev) {
-            if (isAttendance(localItem)) {
-              if (
-                allDeletedIds.has(localItem.id) ||
-                (localItem.date && allDeletedDates.has(localItem.date))
-              ) {
-                continue;
-              }
-            }
+        const authoritativeList = Array.from(serverMap.values());
+        setRows(authoritativeList);
+        persistRows(authoritativeList, 'supabase_authoritative_sync');
 
-            if (!serverMap.has(localItem.id)) {
-              merged.push(localItem);
-              serverMap.set(localItem.id, localItem);
-              unsavedToSync.push(localItem);
-            }
-          }
-
-          // Merge durable IndexedDB items (recovers custom assignments if server container rebooted)
-          if (durableBackup) {
-            for (const backupItem of durableBackup) {
-              if (isAttendance(backupItem)) {
-                if (
-                  allDeletedIds.has(backupItem.id) ||
-                  (backupItem.date && allDeletedDates.has(backupItem.date))
-                ) {
-                  continue;
+        if (pendingQueue.length > 0) {
+          fetch('/api/data', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'x-user-role': currentUser.role,
+            },
+            body: JSON.stringify(pendingQueue),
+          })
+            .then((res) => {
+              if (res.ok) {
+                for (const item of pendingQueue) {
+                  removeEntryFromBackgroundSyncQueue(item.id);
                 }
               }
+            })
+            .catch(() => {});
+        }
 
-              if (!serverMap.has(backupItem.id)) {
-                merged.push(backupItem);
-                serverMap.set(backupItem.id, backupItem);
-                unsavedToSync.push(backupItem);
-              }
-            }
-          }
-
-          persistRows(merged, 'initial_sync_merge');
-
-          if (unsavedToSync.length > 0) {
-            const syncable = unsavedToSync.filter((entry) => {
-              if (currentUser.role === 'Teacher') return true;
-              return entry.kind === 'submission' || entry.kind === 'message';
-            });
-            if (syncable.length > 0) {
-              fetch('/api/data', {
-                method: 'POST',
-                headers: {
-                  'Content-Type': 'application/json',
-                  'x-user-role': currentUser.role,
-                },
-                body: JSON.stringify(syncable),
-              }).catch(() => {});
-            }
-          }
-
-          return merged;
-        });
         setLoaded(true);
       })
       .catch((err: Error) => {
@@ -369,24 +322,27 @@ export default function App() {
             id: item.localId || item.id,
           }));
 
+          const currentPending = getPendingSyncQueue();
+          const nextMap = new Map(formatted.map((item) => [item.id, item]));
+          for (const pendingItem of currentPending) {
+            nextMap.set(pendingItem.id, pendingItem);
+          }
+          const nextList = Array.from(nextMap.values());
+
           setRows((prev) => {
-            const prevMap = new Map(prev.map((item) => [item.id, JSON.stringify(item)]));
-            let hasChanges = false;
-            for (const item of formatted) {
-              const prevStr = prevMap.get(item.id);
-              if (!prevStr || prevStr !== JSON.stringify(item)) {
-                hasChanges = true;
-                break;
+            if (prev.length === nextList.length) {
+              const prevMap = new Map(prev.map((item) => [item.id, JSON.stringify(item)]));
+              let hasChanges = false;
+              for (const item of nextList) {
+                const prevStr = prevMap.get(item.id);
+                if (!prevStr || prevStr !== JSON.stringify(item)) {
+                  hasChanges = true;
+                  break;
+                }
               }
+              if (!hasChanges) return prev;
             }
 
-            if (!hasChanges) return prev;
-
-            const nextMap = new Map(prev.map((item) => [item.id, item]));
-            for (const item of formatted) {
-              nextMap.set(item.id, item);
-            }
-            const nextList = Array.from(nextMap.values());
             persistRows(nextList, 'background_live_sync');
             return nextList;
           });
@@ -459,10 +415,14 @@ export default function App() {
     return [...newCustom, ...initialMapped];
   }, [rows]);
 
+  const postedAssignments = useMemo<AssignmentEntry[]>(() => {
+    return allAssignments.filter((a) => Boolean(a.posted));
+  }, [allAssignments]);
+
   const visibleAssignments = useMemo<AssignmentEntry[]>(() => {
     if (role === 'Teacher') return allAssignments;
-    return allAssignments.filter((a) => a.posted !== false);
-  }, [allAssignments, role]);
+    return postedAssignments;
+  }, [allAssignments, postedAssignments, role]);
 
   const allMessages = useMemo<MessageEntry[]>(() => {
     return rows.filter(isMessage);
@@ -511,15 +471,31 @@ export default function App() {
   }, [rows]);
 
 
-  // Retrieve submission for a specific assignment and student
+  // Retrieve submission for a specific assignment and student (prioritizing latest / highest-progressed if multiple exist)
   const getSubmission = useCallback(
     (assignmentId: string, studentId: string): SubmissionEntry | undefined => {
-      return rows.find(
+      const matches = rows.filter(
         (entry): entry is SubmissionEntry =>
           isSubmission(entry) &&
           entry.assignment === assignmentId &&
           (entry.studentId === studentId || (!entry.studentId && studentId === 'hajun'))
       );
+      if (matches.length === 0) return undefined;
+      if (matches.length === 1) return matches[0];
+
+      const statusPriority: Record<HomeworkStatus, number> = {
+        Reviewed: 4,
+        'Handed in': 3,
+        Draft: 2,
+        'To do': 1,
+      };
+
+      return [...matches].sort((a, b) => {
+        const timeA = a.updated ? Date.parse(a.updated) || 0 : 0;
+        const timeB = b.updated ? Date.parse(b.updated) || 0 : 0;
+        if (timeA !== timeB) return timeB - timeA;
+        return (statusPriority[b.status] || 0) - (statusPriority[a.status] || 0);
+      })[0];
     },
     [rows]
   );
@@ -546,10 +522,16 @@ export default function App() {
   );
 
   const completedCount = useMemo(() => {
-    return visibleAssignments.filter((a) =>
+    if (role === 'Teacher') {
+      return postedAssignments.filter((a) => {
+        const subs = getStudentSubmissions(a);
+        return Object.values(subs).some((st) => st === 'Handed in' || st === 'Reviewed');
+      }).length;
+    }
+    return postedAssignments.filter((a) =>
       ['Handed in', 'Reviewed'].includes(getHomeworkStatus(a))
     ).length;
-  }, [visibleAssignments, getHomeworkStatus]);
+  }, [role, postedAssignments, getHomeworkStatus, getStudentSubmissions]);
 
   async function action(fn: () => Promise<void>) {
     setBusy(true);
@@ -566,7 +548,21 @@ export default function App() {
   async function saveEntry(entry: Entry) {
     // 1. Local-first optimistic durability: ALWAYS save to React state & durable storage immediately
     setRows((prev) => {
-      const next = [...prev.filter((x) => x.id !== entry.id), entry];
+      const next = [
+        ...prev.filter((x) => {
+          if (x.id === entry.id) return false;
+          if (
+            entry.kind === 'submission' &&
+            isSubmission(x) &&
+            x.assignment === entry.assignment &&
+            x.studentId === entry.studentId
+          ) {
+            return false;
+          }
+          return true;
+        }),
+        entry,
+      ];
       persistRows(next, `save_${entry.kind}`);
       return next;
     });
@@ -608,7 +604,21 @@ export default function App() {
     // 1. Local-first optimistic durability
     setRows((prev) => {
       const ids = new Set(entries.map((e) => e.id));
-      const next = [...prev.filter((x) => !ids.has(x.id)), ...entries];
+      const subKeys = new Set(
+        entries
+          .filter(isSubmission)
+          .map((e) => `${e.assignment}::${e.studentId}`)
+      );
+      const next = [
+        ...prev.filter((x) => {
+          if (ids.has(x.id)) return false;
+          if (isSubmission(x) && subKeys.has(`${x.assignment}::${x.studentId}`)) {
+            return false;
+          }
+          return true;
+        }),
+        ...entries,
+      ];
       persistRows(next, 'save_batch');
       return next;
     });
@@ -650,21 +660,28 @@ export default function App() {
       return;
     }
     setActive(assignment);
-    const targetStudent = role === 'Teacher' ? reviewingStudent : activeStudent;
-    const existingSubmission = getSubmission(assignment.id, targetStudent.id);
+    let targetStudent = role === 'Teacher' ? reviewingStudent : activeStudent;
+    let existingSubmission = getSubmission(assignment.id, targetStudent.id);
 
-    // Check for saved local vault submission if not in memory
-    let localSavedSubmission: SubmissionEntry | null = null;
-    if (!existingSubmission && typeof window !== 'undefined') {
-      try {
-        const rawVault = localStorage.getItem(`saved_sub_${assignment.id}_${targetStudent.id}`);
-        if (rawVault) {
-          localSavedSubmission = JSON.parse(rawVault);
-        }
-      } catch {}
+    // When Teacher opens an assignment, auto-select a student who has submitted/drafted if current reviewingStudent hasn't
+    if (role === 'Teacher' && (!existingSubmission || existingSubmission.status === 'To do')) {
+      const studentWithWork =
+        STUDENTS.find((st) => {
+          const s = getSubmission(assignment.id, st.id);
+          return s && (s.status === 'Handed in' || s.status === 'Reviewed');
+        }) ||
+        STUDENTS.find((st) => {
+          const s = getSubmission(assignment.id, st.id);
+          return s && s.status === 'Draft';
+        });
+      if (studentWithWork) {
+        targetStudent = studentWithWork;
+        setReviewingStudent(studentWithWork);
+        existingSubmission = getSubmission(assignment.id, studentWithWork.id);
+      }
     }
 
-    const sub = existingSubmission || localSavedSubmission;
+    const sub = existingSubmission;
 
     // Check for active uncommitted draft auto-save
     let autoDraft: string | null = null;
@@ -803,6 +820,13 @@ export default function App() {
   const handleRoleChange = (newRole: Role) => {
     setRole(newRole);
     setFilter('All homework');
+    if (currentUser?.role === 'Teacher') {
+      if (newRole === 'Student' && reviewingStudent) {
+        setSelectedStudent(reviewingStudent);
+      } else if (newRole === 'Teacher' && selectedStudent.id !== 'preview') {
+        setReviewingStudent(selectedStudent);
+      }
+    }
     if (newRole === 'Student' && (page === 'Attendance' || page === 'Roadmap')) {
       setPage('Home');
     }
@@ -901,6 +925,9 @@ export default function App() {
     action(async () => {
       const res = await fetch(`/api/data?id=${encodeURIComponent(submissionId)}`, {
         method: 'DELETE',
+        headers: {
+          'x-user-role': currentUser?.role || role,
+        },
       });
       if (!res.ok) {
         const data = (await res.json().catch(() => ({}))) as { error?: string };
@@ -1448,7 +1475,7 @@ export default function App() {
         role={role}
         currentUser={currentUser}
         selectedStudent={activeStudent}
-        totalAssignments={visibleAssignments.length}
+        totalAssignments={postedAssignments.length}
         completedAssignments={completedCount}
         onNavigate={navigateTo}
       />
@@ -1594,19 +1621,32 @@ export default function App() {
               onSubmitHomework={() => submitHomework('Handed in')}
               onResetSubmission={handleResetSubmission}
               onTogglePost={handleTogglePost}
+              onAnnotationsChange={(newAnnotations) => {
+                setAnnotations(newAnnotations);
+              }}
               onSaveAnnotations={(newAnnotations) => {
                 setAnnotations(newAnnotations);
-                const targetSub = getSubmission(active.id, reviewingStudent.id);
-                if (targetSub) {
-                  action(async () => {
-                    await saveEntry({
-                      ...targetSub,
-                      annotations: newAnnotations,
-                      updated: new Date().toISOString(),
-                    });
-                    setToast(`Apple Pencil markings saved for ${reviewingStudent.name}.`);
+                const targetSub = getSubmission(active.id, reviewingStudent.id) || {
+                  id: `s-${active.id}-${reviewingStudent.id}`,
+                  kind: 'submission',
+                  assignment: active.id,
+                  studentId: reviewingStudent.id,
+                  studentName: reviewingStudent.name,
+                  text: draft || '',
+                  files: [],
+                  status: 'To do',
+                  updated: new Date().toISOString(),
+                };
+                action(async () => {
+                  await saveEntry({
+                    ...targetSub,
+                    annotations: newAnnotations,
+                    feedback,
+                    scorecard,
+                    updated: new Date().toISOString(),
                   });
-                }
+                  setToast(`Markings & comments saved for ${reviewingStudent.name}.`);
+                });
               }}
               onActivityComplete={handleActivityComplete}
               submission={
@@ -1624,8 +1664,20 @@ export default function App() {
               onFeedbackChange={setFeedback}
               onReturnFeedback={() =>
                 action(async () => {
-                  const targetSub = getSubmission(active.id, reviewingStudent.id);
-                  if (!targetSub) return;
+                  let targetSub = getSubmission(active.id, reviewingStudent.id);
+                  if (!targetSub) {
+                    targetSub = {
+                      id: `s-${active.id}-${reviewingStudent.id}`,
+                      kind: 'submission',
+                      assignment: active.id,
+                      studentId: reviewingStudent.id,
+                      studentName: reviewingStudent.name,
+                      text: draft || '',
+                      files: [],
+                      status: 'Reviewed',
+                      updated: new Date().toISOString(),
+                    };
+                  }
                   await saveEntry({
                     ...targetSub,
                     feedback,

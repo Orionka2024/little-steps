@@ -2,7 +2,7 @@
 
 import React from 'react';
 import { ChevronRight, LogOut, ShieldCheck } from 'lucide-react';
-import type { Role, Student } from '../../lib/types';
+import { STUDENTS, PREVIEW_STUDENT, type Role, type Student } from '../../lib/types';
 import type { ClassroomUser } from '../../lib/auth-types';
 
 interface HeaderProps {
@@ -22,6 +22,7 @@ export function Header({
   currentUser,
   onRoleChange,
   selectedStudent,
+  onStudentChange,
   onLogout,
   onOpenBackupModal,
 }: HeaderProps) {
@@ -39,7 +40,7 @@ export function Header({
             ? 'Teacher Workspace'
             : isRealStudent
             ? `Student: ${currentUser?.displayName || selectedStudent.name}`
-            : 'Student View (Preview)'}
+            : `Student View: ${selectedStudent.name}`}
         </span>
 
         {!isRealStudent && (
@@ -54,8 +55,32 @@ export function Header({
           </select>
         )}
 
+        {!isRealStudent && role === 'Student' && onStudentChange && (
+          <select
+            aria-label="Preview as student"
+            value={selectedStudent.id}
+            onChange={(e) => {
+              const val = e.target.value;
+              if (val === PREVIEW_STUDENT.id) {
+                onStudentChange(PREVIEW_STUDENT);
+              } else {
+                const found = STUDENTS.find((s) => s.id === val);
+                if (found) onStudentChange(found);
+              }
+            }}
+            style={{ fontWeight: 600 }}
+          >
+            {STUDENTS.map((s) => (
+              <option key={s.id} value={s.id}>
+                As {s.name}
+              </option>
+            ))}
+            <option value={PREVIEW_STUDENT.id}>Blank Preview</option>
+          </select>
+        )}
+
         <div className="avatar small">
-          {role === 'Teacher' ? 'T' : isRealStudent ? (currentUser?.avatar || selectedStudent.avatar) : 'S'}
+          {role === 'Teacher' ? 'T' : selectedStudent.avatar || 'S'}
         </div>
 
         {role === 'Teacher' && onOpenBackupModal && (

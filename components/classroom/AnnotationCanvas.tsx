@@ -6,17 +6,22 @@ import {
   Highlighter,
   Eraser,
   Undo2,
+  Redo2,
   Trash2,
   Sparkles,
   ShieldCheck,
   Eye,
   EyeOff,
+  Save,
+  Check,
 } from 'lucide-react';
 import type { AnnotationStroke, AnnotationPoint } from '../../lib/types';
 
 interface AnnotationCanvasProps {
   initialData?: string;
+  onChange?: (data: string) => void;
   onSave?: (data: string) => void;
+  isSaving?: boolean;
   readOnly?: boolean;
   studentName?: string;
   children: React.ReactNode;
@@ -38,7 +43,9 @@ const PEN_SIZES = [
 
 export function AnnotationCanvas({
   initialData,
+  onChange,
   onSave,
+  isSaving = false,
   readOnly = false,
   studentName,
   children,
@@ -58,12 +65,41 @@ export function AnnotationCanvas({
       return [];
     }
   });
+  const [undoneStrokes, setUndoneStrokes] = useState<AnnotationStroke[]>([]);
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState<boolean>(false);
+  const [justSaved, setJustSaved] = useState<boolean>(false);
   const [isDrawing, setIsDrawing] = useState(false);
   const [pencilOnly, setPencilOnly] = useState<boolean>(false);
   const [penDetected, setPenDetected] = useState<boolean>(false);
   const [visible, setVisible] = useState<boolean>(true);
 
   const currentStrokeRef = useRef<AnnotationStroke | null>(null);
+
+  // Synchronize strokes if initialData changes externally (e.g. changing student)
+  useEffect(() => {
+    if (!initialData) {
+      setStrokes([]);
+      setUndoneStrokes([]);
+      setHasUnsavedChanges(false);
+      return;
+    }
+    try {
+      const parsed = JSON.parse(initialData) as AnnotationStroke[];
+      setStrokes(Array.isArray(parsed) ? parsed : []);
+    } catch {
+      setStrokes([]);
+    }
+    setUndoneStrokes([]);
+    setHasUnsavedChanges(false);
+  }, [initialData]);
+
+  // Reset justSaved temporary banner
+  useEffect(() => {
+    if (justSaved) {
+      const timer = setTimeout(() => setJustSaved(false), 3500);
+      return () => clearTimeout(timer);
+    }
+  }, [justSaved]);
 
   // Redraw all strokes on canvas with high-DPI scaling
   const redrawCanvas = useCallback(() => {
@@ -157,21 +193,34 @@ export function AnnotationCanvas({
     };
   }, [redrawCanvas]);
 
-  // Notify parent of updated strokes
+  // Notify parent of updated strokes locally without auto-saving to server
   const handleUpdateStrokes = useCallback(
     (newStrokes: AnnotationStroke[]) => {
       setStrokes(newStrokes);
-      if (onSave) {
-        onSave(JSON.stringify(newStrokes));
+      setHasUnsavedChanges(true);
+      setJustSaved(false);
+      if (onChange) {
+        onChange(JSON.stringify(newStrokes));
       }
     },
-    [onSave]
+    [onChange]
   );
 
   // Undo last stroke
   const handleUndo = () => {
     if (strokes.length === 0) return;
+    const last = strokes[strokes.length - 1];
     const updated = strokes.slice(0, -1);
+    setUndoneStrokes((prev) => [...prev, last]);
+    handleUpdateStrokes(updated);
+  };
+
+  // Redo previously undone stroke
+  const handleRedo = () => {
+    if (undoneStrokes.length === 0) return;
+    const next = undoneStrokes[undoneStrokes.length - 1];
+    setUndoneStrokes((prev) => prev.slice(0, -1));
+    const updated = [...strokes, next];
     handleUpdateStrokes(updated);
   };
 
@@ -179,9 +228,33 @@ export function AnnotationCanvas({
   const handleClear = () => {
     if (strokes.length === 0) return;
     if (confirm('Clear all handwritten notes and markings?')) {
+      setUndoneStrokes([]);
       handleUpdateStrokes([]);
     }
   };
+
+  // Explicit Save triggered by the teacher
+  const handleSave = useCallback(() => {
+    if (onSave) {
+      onSave(JSON.stringify(strokes));
+    }
+    setHasUnsavedChanges(false);
+    setJustSaved(true);
+  }, [onSave, strokes]);
+
+  // Keyboard shortcut: Cmd+S / Ctrl+S to save remarks
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && (e.key === 's' || e.key === 'S')) {
+        if (!readOnly && onSave && hasUnsavedChanges) {
+          e.preventDefault();
+          handleSave();
+        }
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [readOnly, onSave, hasUnsavedChanges, handleSave]);
 
   // Distance helper for eraser
   const isNearPoint = (p1: AnnotationPoint, p2: AnnotationPoint, threshold: number) => {
@@ -225,6 +298,7 @@ export function AnnotationCanvas({
         (st) => !st.points.some((p) => isNearPoint(p, pt, threshold))
       );
       if (remaining.length !== strokes.length) {
+        setUndoneStrokes([]);
         handleUpdateStrokes(remaining);
       }
       return;
@@ -254,6 +328,7 @@ export function AnnotationCanvas({
         (st) => !st.points.some((p) => isNearPoint(p, pt, threshold))
       );
       if (remaining.length !== strokes.length) {
+        setUndoneStrokes([]);
         handleUpdateStrokes(remaining);
       }
       return;
@@ -310,6 +385,7 @@ export function AnnotationCanvas({
     if (currentStrokeRef.current && currentStrokeRef.current.points.length > 0) {
       const completed = [...strokes, currentStrokeRef.current];
       currentStrokeRef.current = null;
+      setUndoneStrokes([]);
       handleUpdateStrokes(completed);
     }
   };
@@ -482,8 +558,8 @@ export function AnnotationCanvas({
             </div>
           </div>
 
-          {/* Action buttons: Palm rejection & Undo & Clear */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+          {/* Action buttons: Palm rejection & Undo/Redo & Clear & Save */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
             <button
               type="button"
               onClick={() => setPencilOnly(!pencilOnly)}
@@ -535,6 +611,29 @@ export function AnnotationCanvas({
 
             <button
               type="button"
+              onClick={handleRedo}
+              disabled={undoneStrokes.length === 0}
+              title="Redo previously undone stroke"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '4px',
+                padding: '6px 10px',
+                borderRadius: '6px',
+                border: '1px solid #d8e2d4',
+                background: '#fff',
+                color: '#55665a',
+                fontSize: '11px',
+                fontWeight: 600,
+                cursor: undoneStrokes.length > 0 ? 'pointer' : 'not-allowed',
+                opacity: undoneStrokes.length > 0 ? 1 : 0.5,
+              }}
+            >
+              <Redo2 size={13} /> Redo
+            </button>
+
+            <button
+              type="button"
               onClick={handleClear}
               disabled={strokes.length === 0}
               title="Clear all strokes"
@@ -554,6 +653,94 @@ export function AnnotationCanvas({
               }}
             >
               <Trash2 size={13} /> Clear
+            </button>
+
+            {hasUnsavedChanges && (
+              <span
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  background: '#fef3c7',
+                  color: '#92400e',
+                  border: '1px solid #fde68a',
+                  padding: '5px 8px',
+                  borderRadius: '6px',
+                  fontSize: '11px',
+                  fontWeight: 600,
+                }}
+              >
+                ● Unsaved remarks
+              </span>
+            )}
+
+            {justSaved && (
+              <span
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  background: '#f0fdf4',
+                  color: '#15803d',
+                  border: '1px solid #bbf7d0',
+                  padding: '5px 8px',
+                  borderRadius: '6px',
+                  fontSize: '11px',
+                  fontWeight: 600,
+                }}
+              >
+                <Check size={12} /> Saved
+              </span>
+            )}
+
+            <button
+              type="button"
+              onClick={handleSave}
+              disabled={isSaving || (!hasUnsavedChanges && !justSaved)}
+              title={
+                hasUnsavedChanges
+                  ? 'Save handwritten remarks and comments (Cmd+S)'
+                  : 'All remarks are saved'
+              }
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '5px',
+                padding: '6px 12px',
+                borderRadius: '6px',
+                border: hasUnsavedChanges
+                  ? '1px solid #16a34a'
+                  : justSaved
+                  ? '1px solid #86efac'
+                  : '1px solid #d8e2d4',
+                background: hasUnsavedChanges
+                  ? '#16a34a'
+                  : justSaved
+                  ? '#f0fdf4'
+                  : '#fafbf8',
+                color: hasUnsavedChanges
+                  ? '#ffffff'
+                  : justSaved
+                  ? '#15803d'
+                  : '#88988b',
+                fontSize: '11px',
+                fontWeight: 700,
+                cursor: hasUnsavedChanges && !isSaving ? 'pointer' : 'default',
+                boxShadow: hasUnsavedChanges ? '0 1px 4px rgba(22,163,74,0.3)' : 'none',
+                transition: 'all 0.15s ease',
+              }}
+            >
+              {isSaving ? (
+                'Saving…'
+              ) : justSaved ? (
+                <>
+                  <Check size={13} /> Saved
+                </>
+              ) : (
+                <>
+                  <Save size={13} /> Save remarks
+                </>
+              )}
             </button>
 
             {penDetected && (

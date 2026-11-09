@@ -24,6 +24,7 @@ import {
   Bold,
   Italic,
   List,
+  Save,
 } from 'lucide-react';
 import type {
   AssignmentEntry,
@@ -123,6 +124,7 @@ interface EditorViewProps {
   onSubmitHomework: () => void;
   onResetSubmission?: () => void;
   onSaveAnnotations?: (annotations: string) => void;
+  onAnnotationsChange?: (annotations: string) => void;
   submission?: SubmissionEntry;
   scorecard?: WritingScorecard;
   onSaveScorecard?: (card: WritingScorecard) => void;
@@ -157,6 +159,7 @@ export function EditorView({
   onSubmitHomework,
   onResetSubmission,
   onSaveAnnotations,
+  onAnnotationsChange,
   submission,
   scorecard,
   onSaveScorecard,
@@ -177,12 +180,14 @@ export function EditorView({
   const [markupMode, setMarkupMode] = useState<boolean>(false);
   const [showStudentMarkup, setShowStudentMarkup] = useState<boolean>(true);
   const [localAnnotations, setLocalAnnotations] = useState<string | null>(null);
+  const [hasUnsavedAnnotations, setHasUnsavedAnnotations] = useState<boolean>(false);
   const [isFullScreen, setIsFullScreen] = useState<boolean>(false);
   const [showPromptInFullScreen, setShowPromptInFullScreen] = useState<boolean>(true);
   const [fontSizeLevel, setFontSizeLevel] = useState<'normal' | 'large' | 'huge'>('large');
   const [isWideMode, setIsWideMode] = useState<boolean>(false);
   const [showConnectors, setShowConnectors] = useState<boolean>(false);
   const [isSpeaking, setIsSpeaking] = useState<boolean>(false);
+  const [isSpeakingComment, setIsSpeakingComment] = useState<boolean>(false);
   const [history, setHistory] = useState<string[]>([draft]);
   const [historyIndex, setHistoryIndex] = useState<number>(0);
   const lastPushTimeRef = useRef<number>(Date.now());
@@ -205,6 +210,7 @@ export function EditorView({
     if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
       window.speechSynthesis.cancel();
       setIsSpeaking(false);
+      setIsSpeakingComment(false);
     }
   }, [reviewingStudent.id, currentStudent.id, assignment.id]);
 
@@ -314,12 +320,67 @@ export function EditorView({
       return;
     }
     window.speechSynthesis.cancel();
+    setIsSpeakingComment(false);
     const utterance = new SpeechSynthesisUtterance(textToRead);
     utterance.lang = 'en-US';
     utterance.rate = 0.88; // Slightly slower, clear enunciation for young English learners
     utterance.onend = () => setIsSpeaking(false);
     utterance.onerror = () => setIsSpeaking(false);
     setIsSpeaking(true);
+    window.speechSynthesis.speak(utterance);
+  };
+
+  const handleToggleCommentSpeech = (customText?: string) => {
+    if (typeof window === 'undefined' || !('speechSynthesis' in window)) {
+      alert('Speech synthesis is not supported on this device/browser.');
+      return;
+    }
+    if (isSpeakingComment) {
+      window.speechSynthesis.cancel();
+      setIsSpeakingComment(false);
+      return;
+    }
+
+    const textToRead =
+      (typeof customText === 'string' ? customText : (submission?.feedback || feedback))?.trim() ||
+      'Your teacher has reviewed your work! Check your scorecard and notes below.';
+
+    if (!textToRead) {
+      alert('No teacher comments to listen to.');
+      return;
+    }
+
+    window.speechSynthesis.cancel();
+    setIsSpeaking(false);
+
+    const utterance = new SpeechSynthesisUtterance(textToRead);
+    utterance.lang = 'en-US';
+    utterance.rate = 0.88; // Friendly, clear enunciation for English learners
+
+    try {
+      const voices = window.speechSynthesis.getVoices();
+      const naturalVoice =
+        voices.find(
+          (v) =>
+            v.lang.startsWith('en') &&
+            (v.name.includes('Natural') ||
+              v.name.includes('Samantha') ||
+              v.name.includes('Daniel') ||
+              v.name.includes('Karen') ||
+              v.name.includes('Google US English') ||
+              v.name.includes('Alex'))
+        ) || voices.find((v) => v.lang.startsWith('en'));
+
+      if (naturalVoice) {
+        utterance.voice = naturalVoice;
+      }
+    } catch {
+      // Fallback to default browser voice
+    }
+
+    utterance.onend = () => setIsSpeakingComment(false);
+    utterance.onerror = () => setIsSpeakingComment(false);
+    setIsSpeakingComment(true);
     window.speechSynthesis.speak(utterance);
   };
 
@@ -627,6 +688,7 @@ export function EditorView({
   if (submission?.id !== prevSubmissionKey) {
     setPrevSubmissionKey(submission?.id);
     setLocalAnnotations(null);
+    setHasUnsavedAnnotations(false);
   }
 
   const annotations = localAnnotations ?? (submission?.annotations || '');
@@ -669,7 +731,16 @@ ${draft}
 
   return (
     <>
-      <button className="text-button back-link" onClick={onBack}>
+      <button
+        className="text-button back-link"
+        onClick={() => {
+          if (hasUnsavedAnnotations && localAnnotations) {
+            onSaveAnnotations?.(localAnnotations);
+            setHasUnsavedAnnotations(false);
+          }
+          onBack();
+        }}
+      >
         <ArrowLeft size={16} /> Back to homework
       </button>
 
@@ -817,7 +888,13 @@ ${draft}
               return (
                 <button
                   key={st.id}
-                  onClick={() => onReviewingStudentChange(st)}
+                  onClick={() => {
+                    if (hasUnsavedAnnotations && localAnnotations) {
+                      onSaveAnnotations?.(localAnnotations);
+                      setHasUnsavedAnnotations(false);
+                    }
+                    onReviewingStudentChange(st);
+                  }}
                   style={{
                     display: 'inline-flex',
                     alignItems: 'center',
@@ -876,6 +953,96 @@ ${draft}
 
       <div className="editor-grid" style={{ gridTemplateColumns: isWideMode ? '1fr' : undefined }}>
         <div>
+          {role === 'Student' && (submission?.status === 'Reviewed' || Boolean(submission?.feedback?.trim())) && (
+            <div
+              style={{
+                background: '#eef7f1',
+                border: '1.5px solid #286654',
+                borderRadius: '12px',
+                padding: '16px 20px',
+                marginBottom: '20px',
+              }}
+            >
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: '10px',
+                  marginBottom: '8px',
+                  flexWrap: 'wrap',
+                }}
+              >
+                <strong style={{ color: '#1b4b3c', fontSize: '14px', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                  <Check size={16} /> Teacher’s Review & Comments
+                </strong>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                  <button
+                    type="button"
+                    onClick={() => handleToggleCommentSpeech()}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '5px',
+                      padding: '4px 10px',
+                      borderRadius: '999px',
+                      fontSize: '12px',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      background: isSpeakingComment ? '#fde8e8' : '#ffffff',
+                      border: `1.5px solid ${isSpeakingComment ? '#f1aeb5' : '#286654'}`,
+                      color: isSpeakingComment ? '#b02a37' : '#1b4b3c',
+                      boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
+                      transition: 'all 0.15s ease',
+                    }}
+                    title={
+                      isSpeakingComment
+                        ? 'Click to stop listening'
+                        : "Listen to teacher's comments read aloud in clear English"
+                    }
+                    aria-label={
+                      isSpeakingComment
+                        ? "Stop listening to teacher's comment"
+                        : "Listen to teacher's comment"
+                    }
+                  >
+                    {isSpeakingComment ? <VolumeX size={14} /> : <Volume2 size={14} />}
+                    <span>{isSpeakingComment ? 'Stop listening' : "Listen to teacher's comment"}</span>
+                  </button>
+                  <span
+                    style={{
+                      fontSize: '11px',
+                      fontWeight: 700,
+                      padding: '3px 9px',
+                      borderRadius: '999px',
+                      background: '#286654',
+                      color: '#fff',
+                    }}
+                  >
+                    Reviewed
+                  </span>
+                </div>
+              </div>
+              {submission?.feedback?.trim() ? (
+                <p
+                  style={{
+                    margin: 0,
+                    color: '#243c35',
+                    fontSize: '14px',
+                    lineHeight: 1.6,
+                    whiteSpace: 'pre-wrap',
+                  }}
+                >
+                  {submission.feedback}
+                </p>
+              ) : (
+                <p style={{ margin: 0, color: '#455e54', fontSize: '13px' }}>
+                  Your teacher has reviewed your work! Check your scorecard and notes below.
+                </p>
+              )}
+            </div>
+          )}
+
           <div className="instructions">
             <h3>
               {assignment.taskType === 'flashcards'
@@ -1045,10 +1212,17 @@ ${draft}
                 <AnnotationCanvas
                   key={`teacher-${reviewingStudent.id}-${submission?.id || 'new'}`}
                   initialData={annotations}
+                  onChange={(data) => {
+                    setLocalAnnotations(data);
+                    setHasUnsavedAnnotations(true);
+                    onAnnotationsChange?.(data);
+                  }}
                   onSave={(data) => {
                     setLocalAnnotations(data);
+                    setHasUnsavedAnnotations(false);
                     onSaveAnnotations?.(data);
                   }}
+                  isSaving={busy}
                   readOnly={false}
                   studentName={reviewingStudent.name}
                 >
@@ -1340,7 +1514,42 @@ ${draft}
             />
 
             <div className="feedback-box">
-              <h3>Teacher feedback</h3>
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: '8px',
+                  marginBottom: '8px',
+                  flexWrap: 'wrap',
+                }}
+              >
+                <h3 style={{ margin: 0 }}>Teacher feedback</h3>
+                {role === 'Teacher' && Boolean(feedback.trim()) && (
+                  <button
+                    type="button"
+                    onClick={() => handleToggleCommentSpeech(feedback)}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                      padding: '3px 8px',
+                      borderRadius: '6px',
+                      fontSize: '11px',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      background: isSpeakingComment ? '#fde8e8' : '#ffffff',
+                      border: `1px solid ${isSpeakingComment ? '#f1aeb5' : '#c8d8cc'}`,
+                      color: isSpeakingComment ? '#b02a37' : '#286654',
+                      transition: 'all 0.15s ease',
+                    }}
+                    title={isSpeakingComment ? 'Click to stop listening' : 'Listen to feedback'}
+                  >
+                    {isSpeakingComment ? <VolumeX size={13} /> : <Volume2 size={13} />}
+                    <span>{isSpeakingComment ? 'Stop' : 'Listen'}</span>
+                  </button>
+                )}
+              </div>
               {role === 'Teacher' ? (
                 <>
                   <textarea
@@ -1349,14 +1558,46 @@ ${draft}
                     onChange={(e) => onFeedbackChange(e.target.value)}
                     placeholder={`Write feedback for ${reviewingStudent.name}…`}
                   />
-                  <button
-                    className="primary"
-                    disabled={busy || !submission || (!feedback.trim() && !annotations)}
-                    onClick={onReturnFeedback}
-                  >
-                    {annotations ? 'Return feedback & markings' : 'Return feedback'} to{' '}
-                    {reviewingStudent.name} <Check size={16} />
-                  </button>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '10px' }}>
+                    <button
+                      className="primary"
+                      disabled={busy || (!feedback.trim() && !annotations && !scorecard)}
+                      onClick={() => {
+                        setHasUnsavedAnnotations(false);
+                        onReturnFeedback();
+                      }}
+                    >
+                      {annotations ? 'Return feedback & markings' : 'Return feedback'} to{' '}
+                      {reviewingStudent.name} <Check size={16} />
+                    </button>
+
+                    <button
+                      type="button"
+                      disabled={busy || (!feedback.trim() && !annotations && !scorecard && !hasUnsavedAnnotations)}
+                      onClick={() => {
+                        setHasUnsavedAnnotations(false);
+                        onSaveAnnotations?.(annotations);
+                      }}
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '6px',
+                        padding: '8px 12px',
+                        borderRadius: '8px',
+                        background: '#ffffff',
+                        border: '1px solid #c8d8cc',
+                        color: '#286654',
+                        fontSize: '12px',
+                        fontWeight: 600,
+                        cursor: busy ? 'not-allowed' : 'pointer',
+                        transition: 'all 0.15s ease',
+                      }}
+                      title="Save comments and remarks without marking as reviewed"
+                    >
+                      <Save size={14} /> Save comments & remarks
+                    </button>
+                  </div>
                   {submission && onResetSubmission && (
                     <button
                       type="button"
@@ -1396,10 +1637,36 @@ ${draft}
                   )}
                 </>
               ) : (
-                <p>
-                  {submission?.feedback ||
-                    'Your feedback will appear here after your teacher reviews your work.'}
-                </p>
+                <div>
+                  <p style={{ margin: '0 0 10px 0' }}>
+                    {submission?.feedback ||
+                      'Your feedback will appear here after your teacher reviews your work.'}
+                  </p>
+                  {(Boolean(submission?.feedback?.trim()) || submission?.status === 'Reviewed') && (
+                    <button
+                      type="button"
+                      onClick={() => handleToggleCommentSpeech()}
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '5px',
+                        padding: '4px 10px',
+                        borderRadius: '6px',
+                        fontSize: '12px',
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                        background: isSpeakingComment ? '#fde8e8' : '#eaf4ee',
+                        border: `1px solid ${isSpeakingComment ? '#f1aeb5' : '#b2d8c3'}`,
+                        color: isSpeakingComment ? '#b02a37' : '#1e6648',
+                        transition: 'all 0.15s ease',
+                      }}
+                      title={isSpeakingComment ? 'Click to stop listening' : "Listen to teacher's comment"}
+                    >
+                      {isSpeakingComment ? <VolumeX size={14} /> : <Volume2 size={14} />}
+                      <span>{isSpeakingComment ? 'Stop listening' : "Listen to teacher's comment"}</span>
+                    </button>
+                  )}
+                </div>
               )}
             </div>
           </aside>

@@ -240,8 +240,8 @@ test('Initial datasets adhere to domain constraints and interactive rules', () =
     assert.ok(result.success, `Initial assignment ${assignment.id} must be valid`);
     assert.strictEqual(
       assignment.posted,
-      true,
-      `Initial assignment ${assignment.id} must be posted (posted: true) so it is visible to students and teacher`
+      assignment.id === 'a4',
+      `Initial assignment ${assignment.id} posted status must match active classroom state`
     );
   }
 
