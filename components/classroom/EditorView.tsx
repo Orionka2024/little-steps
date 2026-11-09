@@ -108,6 +108,82 @@ const CONNECTOR_GROUPS: ConnectorGroup[] = [
   },
 ];
 
+function cleanTextForSpeech(text: string): string {
+  return text
+    .replace(/[*_#`~>]/g, '')
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function findFriendlySiriVoice(voices: SpeechSynthesisVoice[]): SpeechSynthesisVoice | undefined {
+  if (!voices || voices.length === 0) return undefined;
+
+  const englishVoices = voices.filter((v) => v.lang && v.lang.toLowerCase().startsWith('en'));
+  if (englishVoices.length === 0) return voices[0];
+
+  // 1. Explicit Siri voices (present on iOS / Safari / macOS)
+  const explicitSiri = englishVoices.find((v) => /siri/i.test(v.name));
+  if (explicitSiri) return explicitSiri;
+
+  // 2. Samantha (Enhanced or Premium preferred, then standard) - Apple's iconic Siri US voice
+  const samanthaEnhanced = englishVoices.find(
+    (v) => /samantha/i.test(v.name) && /(enhanced|premium)/i.test(v.name)
+  );
+  if (samanthaEnhanced) return samanthaEnhanced;
+  const samantha = englishVoices.find((v) => /samantha/i.test(v.name));
+  if (samantha) return samantha;
+
+  // 3. Ava (Enhanced or Premium, then standard) - Apple's newer warm Siri voice
+  const avaEnhanced = englishVoices.find(
+    (v) => /ava/i.test(v.name) && /(enhanced|premium)/i.test(v.name)
+  );
+  if (avaEnhanced) return avaEnhanced;
+  const ava = englishVoices.find((v) => /ava/i.test(v.name));
+  if (ava) return ava;
+
+  // 4. Other friendly Apple female Siri voices
+  const preferredAppleVoices = [
+    'nicky',
+    'allison',
+    'flo',
+    'susan',
+    'zoe',
+    'karen',
+    'victoria',
+    'sandy',
+    'shelley',
+  ];
+  for (const name of preferredAppleVoices) {
+    const match = englishVoices.find((v) => new RegExp(`\\b${name}\\b`, 'i').test(v.name));
+    if (match) return match;
+  }
+
+  // 5. High-quality neural / natural web voices (Chrome & Edge)
+  const naturalVoices = englishVoices.find((v) =>
+    /(google us english|google uk english female|natural|neural|jenny|aria)/i.test(v.name)
+  );
+  if (naturalVoices) return naturalVoices;
+
+  // 6. Any other enhanced/premium English voice (excluding known robotic voices)
+  const nonRoboticEnhanced = englishVoices.find(
+    (v) =>
+      /(enhanced|premium)/i.test(v.name) &&
+      !/(alex|fred|ralph|zarvox|albert|trinoids|whisper)/i.test(v.name)
+  );
+  if (nonRoboticEnhanced) return nonRoboticEnhanced;
+
+  // 7. General non-robotic US English voice
+  const generalUs = englishVoices.find(
+    (v) =>
+      v.lang.toLowerCase() === 'en-us' &&
+      !/(alex|fred|ralph|zarvox|albert|trinoids|whisper)/i.test(v.name)
+  );
+  if (generalUs) return generalUs;
+
+  return englishVoices[0];
+}
+
 interface EditorViewProps {
   role: Role;
   assignment: AssignmentEntry;
@@ -188,11 +264,30 @@ export function EditorView({
   const [showConnectors, setShowConnectors] = useState<boolean>(false);
   const [isSpeaking, setIsSpeaking] = useState<boolean>(false);
   const [isSpeakingComment, setIsSpeakingComment] = useState<boolean>(false);
+  const [availableVoices, setAvailableVoices] = useState<SpeechSynthesisVoice[]>([]);
   const [history, setHistory] = useState<string[]>([draft]);
   const [historyIndex, setHistoryIndex] = useState<number>(0);
   const lastPushTimeRef = useRef<number>(Date.now());
   const standardTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   const fullScreenTextareaRef = useRef<HTMLTextAreaElement | null>(null);
+
+  // Pre-load friendly voices on browser ready
+  useEffect(() => {
+    if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
+    const loadVoices = () => {
+      const v = window.speechSynthesis.getVoices();
+      if (v && v.length > 0) {
+        setAvailableVoices(v);
+      }
+    };
+    loadVoices();
+    window.speechSynthesis.onvoiceschanged = loadVoices;
+    return () => {
+      if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+        window.speechSynthesis.onvoiceschanged = null;
+      }
+    };
+  }, []);
 
   // Stop speech synthesis on unmount
   useEffect(() => {
@@ -314,16 +409,30 @@ export function EditorView({
       setIsSpeaking(false);
       return;
     }
-    const textToRead = draft.trim();
-    if (!textToRead) {
+    const rawText = draft.trim();
+    if (!rawText) {
       alert('Write a sentence or paragraph first to listen to it read aloud!');
       return;
     }
     window.speechSynthesis.cancel();
     setIsSpeakingComment(false);
+
+    const textToRead = cleanTextForSpeech(rawText);
     const utterance = new SpeechSynthesisUtterance(textToRead);
-    utterance.lang = 'en-US';
-    utterance.rate = 0.88; // Slightly slower, clear enunciation for young English learners
+
+    const voiceList = availableVoices.length > 0 ? availableVoices : window.speechSynthesis.getVoices();
+    const siriVoice = findFriendlySiriVoice(voiceList);
+    if (siriVoice) {
+      utterance.voice = siriVoice;
+      utterance.lang = siriVoice.lang || 'en-US';
+    } else {
+      utterance.lang = 'en-US';
+    }
+
+    utterance.pitch = 1.06; // Warm, friendly, cheerful Siri inflection
+    utterance.rate = 0.94;  // Natural conversational cadence, clear for English learners
+    utterance.volume = 1.0;
+
     utterance.onend = () => setIsSpeaking(false);
     utterance.onerror = () => setIsSpeaking(false);
     setIsSpeaking(true);
@@ -341,11 +450,11 @@ export function EditorView({
       return;
     }
 
-    const textToRead =
+    const rawText =
       (typeof customText === 'string' ? customText : (submission?.feedback || feedback))?.trim() ||
       'Your teacher has reviewed your work! Check your scorecard and notes below.';
 
-    if (!textToRead) {
+    if (!rawText) {
       alert('No teacher comments to listen to.');
       return;
     }
@@ -353,30 +462,21 @@ export function EditorView({
     window.speechSynthesis.cancel();
     setIsSpeaking(false);
 
+    const textToRead = cleanTextForSpeech(rawText);
     const utterance = new SpeechSynthesisUtterance(textToRead);
-    utterance.lang = 'en-US';
-    utterance.rate = 0.88; // Friendly, clear enunciation for English learners
 
-    try {
-      const voices = window.speechSynthesis.getVoices();
-      const naturalVoice =
-        voices.find(
-          (v) =>
-            v.lang.startsWith('en') &&
-            (v.name.includes('Natural') ||
-              v.name.includes('Samantha') ||
-              v.name.includes('Daniel') ||
-              v.name.includes('Karen') ||
-              v.name.includes('Google US English') ||
-              v.name.includes('Alex'))
-        ) || voices.find((v) => v.lang.startsWith('en'));
-
-      if (naturalVoice) {
-        utterance.voice = naturalVoice;
-      }
-    } catch {
-      // Fallback to default browser voice
+    const voiceList = availableVoices.length > 0 ? availableVoices : window.speechSynthesis.getVoices();
+    const siriVoice = findFriendlySiriVoice(voiceList);
+    if (siriVoice) {
+      utterance.voice = siriVoice;
+      utterance.lang = siriVoice.lang || 'en-US';
+    } else {
+      utterance.lang = 'en-US';
     }
+
+    utterance.pitch = 1.06; // Warm, friendly, encouraging Siri inflection
+    utterance.rate = 0.94;  // Fluent, conversational cadence
+    utterance.volume = 1.0;
 
     utterance.onend = () => setIsSpeakingComment(false);
     utterance.onerror = () => setIsSpeakingComment(false);
